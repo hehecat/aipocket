@@ -3,6 +3,7 @@ pub mod balance;
 pub mod pipeline;
 pub mod scanner;
 pub mod scheduler;
+mod ssrf;
 
 pub use analyzer::{
     Analyzer, ConfigCredentialBundle, GptExtractionReport, RetryGptFailedReport,

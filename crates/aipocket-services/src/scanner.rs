@@ -671,6 +671,20 @@ impl Scanner {
                 return Vec::new();
             }
         };
+        let probe_http = match crate::ssrf::restricted_client(
+            self.settings.validate_timeout,
+            self.settings.max_probe_redirects,
+        ) {
+            Ok(client) => client,
+            Err(error) => {
+                events
+                    .send(ScanEvent::Log(format!(
+                        "probe HTTP policy initialization failed: {error}"
+                    )))
+                    .ok();
+                return Vec::new();
+            }
+        };
         let semaphore = Arc::new(tokio::sync::Semaphore::new(
             self.settings.prober_concurrency.max(1),
         ));
@@ -687,6 +701,14 @@ impl Scanner {
                 if target.is_empty() {
                     continue;
                 }
+                if let Err(error) = crate::ssrf::validate_target(&target) {
+                    events
+                        .send(ScanEvent::Log(format!(
+                            "probe destination blocked for {target}: {error}"
+                        )))
+                        .ok();
+                    continue;
+                }
                 let hint = hit
                     .get("_product")
                     .and_then(Value::as_str)
@@ -701,7 +723,7 @@ impl Scanner {
                     .filter_map(Value::as_str)
                     .map(str::to_owned)
                     .collect::<Vec<_>>();
-                let http = self.http.clone();
+                let http = probe_http.clone();
                 let settings = self.settings.clone();
                 let policy = policy.clone();
                 let semaphore = semaphore.clone();
