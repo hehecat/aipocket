@@ -194,6 +194,84 @@ pub const PACKS: &[ProviderPack] = &[
         shodan_queries: &[],
         github_terms: &["TOGETHER_API_KEY"],
     },
+    ProviderPack {
+        id: "newapi",
+        fofa_queries: &[
+            "body=\"New API\" && body=\"one-api\"",
+            "body=\"sk-\" && body=\"oneapi\"",
+        ],
+        shodan_queries: &[
+            "http.html:\"New API\" http.html:one-api",
+            "http.html:oneapi",
+        ],
+        github_terms: &["ONE_API_TOKEN", "NEW_API_TOKEN one-api"],
+    },
+    ProviderPack {
+        id: "openwebui",
+        fofa_queries: &["body=\"Open WebUI\""],
+        shodan_queries: &["http.html:\"Open WebUI\""],
+        github_terms: &["OPEN_WEBUI_SECRET_KEY", "WEBUI_SECRET_KEY"],
+    },
+    ProviderPack {
+        id: "dify",
+        fofa_queries: &["body=\"Dify\" && body=\"console\""],
+        shodan_queries: &["http.html:Dify"],
+        github_terms: &["DIFY_API_KEY", "DIFY_SECRET_KEY"],
+    },
+    ProviderPack {
+        id: "langflow",
+        fofa_queries: &["body=\"Langflow\""],
+        shodan_queries: &["http.html:Langflow"],
+        github_terms: &["LANGFLOW_API_KEY"],
+    },
+    ProviderPack {
+        id: "flowise",
+        fofa_queries: &["body=\"Flowise\""],
+        shodan_queries: &["http.html:Flowise"],
+        github_terms: &["FLOWISE_API_KEY"],
+    },
+    ProviderPack {
+        id: "litellm",
+        fofa_queries: &["body=\"LiteLLM\""],
+        shodan_queries: &["http.html:LiteLLM"],
+        github_terms: &["LITELLM_MASTER_KEY", "LITELLM_API_KEY"],
+    },
+    ProviderPack {
+        id: "mistral",
+        fofa_queries: &["body=\"MISTRAL_API_KEY\""],
+        shodan_queries: &["http.html:MISTRAL_API_KEY"],
+        github_terms: &["MISTRAL_API_KEY"],
+    },
+    ProviderPack {
+        id: "groq",
+        fofa_queries: &["body=\"GROQ_API_KEY\""],
+        shodan_queries: &["http.html:GROQ_API_KEY"],
+        github_terms: &["GROQ_API_KEY"],
+    },
+    ProviderPack {
+        id: "perplexity",
+        fofa_queries: &["body=\"PERPLEXITY_API_KEY\""],
+        shodan_queries: &["http.html:PERPLEXITY_API_KEY"],
+        github_terms: &["PERPLEXITY_API_KEY"],
+    },
+    ProviderPack {
+        id: "openrouter",
+        fofa_queries: &["body=\"OPENROUTER_API_KEY\""],
+        shodan_queries: &["http.html:OPENROUTER_API_KEY"],
+        github_terms: &["OPENROUTER_API_KEY"],
+    },
+    ProviderPack {
+        id: "volcengine",
+        fofa_queries: &["body=\"ARK_API_KEY\" && body=\"volces.com\""],
+        shodan_queries: &["http.html:ARK_API_KEY"],
+        github_terms: &["ARK_API_KEY", "VOLC_ACCESSKEY"],
+    },
+    ProviderPack {
+        id: "vllm",
+        fofa_queries: &["title=\"vllm\""],
+        shodan_queries: &["http.title:vllm"],
+        github_terms: &["vllm --api-key", "VLLM_API_KEY"],
+    },
 ];
 pub fn registry() -> BTreeMap<&'static str, &'static ProviderPack> {
     PACKS.iter().map(|pack| (pack.id, pack)).collect()
@@ -212,6 +290,18 @@ mod tests {
             "aws_bedrock",
             "cursor",
             "windsurf",
+            "newapi",
+            "openwebui",
+            "dify",
+            "langflow",
+            "flowise",
+            "litellm",
+            "mistral",
+            "groq",
+            "perplexity",
+            "openrouter",
+            "volcengine",
+            "vllm",
         ] {
             let pack = registry()[id];
             assert!(!pack.fofa_queries.is_empty(), "{id} FOFA queries");

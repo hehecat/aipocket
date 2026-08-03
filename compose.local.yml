@@ -12,7 +12,9 @@ services:
       DATABASE_URL: postgres://aipocket:aipocket@postgres:5432/aipocket
       WEB_PASSWORD: ${WEB_PASSWORD:-local-smoke-password}
       WEB_JWT_SECRET: ${WEB_JWT_SECRET:-local-smoke-jwt-secret-not-for-production}
-      GITHUB_HUNTER_ENABLED: "false"
+      GITHUB_HUNTER_ENABLED: ${GITHUB_HUNTER_ENABLED:-"false"}
+      SCHEDULER_ENABLED: ${SCHEDULER_ENABLED:-"false"}
+      SCHEDULER_INTERVAL: ${SCHEDULER_INTERVAL:-"3600"}
       OUTBOUND_NETWORK_ENABLED: "true"
       PROVIDER_DISCOVERY_AUTHORIZED: "true"
       CREDENTIAL_REQUESTS_AUTHORIZED: "true"
