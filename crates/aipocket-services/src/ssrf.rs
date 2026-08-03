@@ -64,7 +64,19 @@ pub(crate) fn validate_destination(url: &Url) -> Result<(), String> {
 }
 
 pub(crate) fn validate_target(target: &str) -> Result<Url, String> {
-    let url = Url::parse(target).map_err(|error| format!("invalid destination URL: {error}"))?;
+    let candidate = target.trim();
+    let has_scheme = candidate.starts_with("http://") || candidate.starts_with("https://");
+    if candidate.contains("://") && !has_scheme {
+        return Err("destination must use http or https".into());
+    }
+    let input = if has_scheme {
+        candidate.to_string()
+    } else {
+        // Bare hosts and "host:port" pairs from discovery sources carry no
+        // scheme; assume HTTPS instead of dropping the target as invalid.
+        format!("https://{candidate}")
+    };
+    let url = Url::parse(&input).map_err(|error| format!("invalid destination URL: {error}"))?;
     validate_destination(&url)?;
     Ok(url)
 }
