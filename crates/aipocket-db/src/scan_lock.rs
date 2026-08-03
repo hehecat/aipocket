@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{Context, Result, bail};
+use anyhow::{anyhow, Context, Result, bail};
 use redis::aio::ConnectionManager;
 use tokio::{task::JoinHandle, time};
 use tracing::warn;
@@ -83,11 +83,17 @@ impl ScanLease {
         if let Some(task) = self.heartbeat.take() {
             task.abort();
         }
-        let released: i32 = redis::Script::new(RELEASE_SCRIPT)
-            .key(LOCK_KEY)
-            .arg(&self.token)
-            .invoke_async(&mut self.connection)
-            .await?;
+        // Bound the Redis round-trip: a stuck connection must not stall the
+        // scan pipeline (the scheduler job itself is also bounded).
+        let released: i32 = tokio::time::timeout(
+            Duration::from_secs(10),
+            redis::Script::new(RELEASE_SCRIPT)
+                .key(LOCK_KEY)
+                .arg(&self.token)
+                .invoke_async(&mut self.connection),
+        )
+        .await
+        .map_err(|_| anyhow!("scan lease release timed out"))??;
         Ok(released == 1)
     }
 }

@@ -165,7 +165,13 @@ async fn serve(settings: Settings, host: IpAddr, port: u16) -> Result<()> {
         tracing::info!(interval = settings.scheduler_interval, "scheduler enabled");
         let scheduler_settings = settings.clone();
         Some(tokio::spawn(async move {
-            let _ = run_watch(scheduler_settings).await;
+            // Watchdog: if the scheduler loop ever exits (or a job hangs past
+            // its deadline), restart it instead of silently going idle.
+            loop {
+                let result = run_watch(scheduler_settings.clone()).await;
+                tracing::warn!(?result, "scheduler loop exited; restarting in 30s");
+                tokio::time::sleep(std::time::Duration::from_secs(30)).await;
+            }
         }))
     } else {
         None

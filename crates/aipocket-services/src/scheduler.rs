@@ -1,10 +1,14 @@
 use aipocket_core::Settings;
-use anyhow::Result;
+use anyhow::{Result, anyhow};
 use std::{future::Future, sync::Arc, time::Duration};
 use tokio::time::{self, MissedTickBehavior};
 use tokio_util::sync::CancellationToken;
 
 const MAX_FAILURE_BACKOFF_MULTIPLIER: u32 = 32;
+/// A scheduled job may not exceed this multiple of the interval; any hang
+/// (e.g. a stuck DB/redis call) aborts the job so the schedule keeps ticking.
+/// Generous (4x) so legitimate long scans (up to ~1h) are never aborted.
+const MAX_JOB_DURATION_MULTIPLIER: u32 = 4;
 
 #[derive(Clone)]
 pub struct Scheduler {
@@ -43,6 +47,7 @@ impl Scheduler {
         interval.set_missed_tick_behavior(MissedTickBehavior::Skip);
         let max_failure_backoff = period.saturating_mul(MAX_FAILURE_BACKOFF_MULTIPLIER);
         let mut failure_backoff = period;
+        let max_job_duration = period.saturating_mul(MAX_JOB_DURATION_MULTIPLIER);
 
         loop {
             tokio::select! {
@@ -50,7 +55,20 @@ impl Scheduler {
                 _ = interval.tick() => {
                     let result = tokio::select! {
                         _ = cancel.cancelled() => break,
-                        result = job() => result,
+                        result = tokio::time::timeout(max_job_duration, job()) => {
+                            match result {
+                                Ok(result) => result,
+                                Err(_elapsed) => {
+                                    tracing::warn!(
+                                        ?max_job_duration,
+                                        "scheduled job exceeded deadline; aborted so the schedule can continue"
+                                    );
+                                    Err(anyhow!(
+                                        "scheduled job exceeded {max_job_duration:?}"
+                                    ))
+                                }
+                            }
+                        }
                     };
 
                     match result {
