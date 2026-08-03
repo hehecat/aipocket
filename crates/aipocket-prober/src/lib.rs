@@ -1,4 +1,5 @@
 pub mod capability;
+pub mod cve_probes;
 pub mod engine;
 pub mod engines;
 pub mod migrated_specs;

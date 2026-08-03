@@ -822,20 +822,49 @@ impl Scanner {
                     let _permit = semaphore.acquire_owned().await.ok();
                     let mut found = Vec::new();
                     let mut findings = Vec::new();
+                    let context = aipocket_prober::ProbeContext {
+                        target: target.clone(),
+                        product: hint.clone(),
+                        max_risk: match settings.probe_max_risk {
+                            0 => aipocket_prober::RiskLevel::L0,
+                            1 => aipocket_prober::RiskLevel::L1,
+                            2 => aipocket_prober::RiskLevel::L2,
+                            _ => aipocket_prober::RiskLevel::L3,
+                        },
+                        intrusive_checks: settings.intrusive_checks,
+                        allowed_classes: {
+                            let raw = settings
+                                .probe_vuln_classes
+                                .trim()
+                                .to_ascii_lowercase();
+                            if raw.is_empty() || matches!(raw.as_str(), "*" | "all") {
+                                vec!["*".into()]
+                            } else {
+                                raw.split(',')
+                                    .map(str::trim)
+                                    .filter(|value| !value.is_empty())
+                                    .map(str::to_string)
+                                    .collect()
+                            }
+                        },
+                        request_budget: settings.generic_max_requests_per_target.max(1),
+                    };
                     if let Some(prober) = aipocket_prober::products::default_probers()
                         .into_iter()
                         .find(|prober| prober.product() == hint)
                     {
-                        let context = aipocket_prober::ProbeContext {
-                            target: target.clone(),
-                            product: hint.clone(),
-                            max_risk: aipocket_prober::RiskLevel::L0,
-                            intrusive_checks: false,
-                            allowed_classes: vec!["unauth_read".into()],
-                            request_budget: settings.generic_max_requests_per_target.max(1),
-                        };
                         if let Ok(rows) = prober.probe(&http, &context).await {
-                            found.extend(rows.into_iter().flat_map(|finding| finding.credentials));
+                            found.extend(rows.iter().flat_map(|finding| finding.credentials.clone()));
+                            findings.extend(rows);
+                        }
+                    }
+                    for prober in aipocket_prober::cve_probes::default_cve_probers() {
+                        if prober.product() != hint {
+                            continue;
+                        }
+                        if let Ok(rows) = prober.probe(&http, &context).await {
+                            found.extend(rows.iter().flat_map(|finding| finding.credentials.clone()));
+                            findings.extend(rows);
                         }
                     }
                     let specs = aipocket_prober::product_specs::specs_for(&hint);
