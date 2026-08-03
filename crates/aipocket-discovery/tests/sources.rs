@@ -75,12 +75,15 @@ async fn all_source_adapters_return_contract_shape() {
             targets: vec!["https://manual".into()],
         }),
     ];
+    let progress_events = Arc::new(Mutex::new(Vec::<DiscoveryProgress>::new()));
     for source in sources {
         let source_name = source.name();
         let budgets = if source_name == "github" {
+            let progress_events = progress_events.clone();
             SourceBudgets {
                 github_code: Some(1),
                 github_commit: Some(1),
+                progress: Some(Arc::new(move |event| progress_events.lock().push(event))),
                 ..Default::default()
             }
         } else {
@@ -127,6 +130,19 @@ async fn all_source_adapters_return_contract_shape() {
             );
             assert_eq!(result.query_usage.len(), 2);
             assert!(result.credential_observations.len() >= 2);
+            let events = progress_events.lock();
+            assert!(events.iter().any(|event| {
+                event.source == "github"
+                    && event.query_index == 1
+                    && event.query_total == 1
+                    && event.page == 0
+            }));
+            assert!(events.iter().any(|event| {
+                event.source == "github"
+                    && event.query_index == 1
+                    && event.query_total == 1
+                    && event.page >= 1
+            }));
         }
     }
     task.abort();

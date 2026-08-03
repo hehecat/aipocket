@@ -1,0 +1,112 @@
+{
+  "schema_version": 2,
+  "candidates": [
+    {
+      "component": "discovery_aggregation",
+      "repository": "projectdiscovery/uncover",
+      "repository_url": "https://github.com/projectdiscovery/uncover",
+      "revision": "3f7b74af20b24a7d5477d1dc77f6ba881219b0de",
+      "revision_url": "https://github.com/projectdiscovery/uncover/tree/3f7b74af20b24a7d5477d1dc77f6ba881219b0de",
+      "commit_api_url": "https://api.github.com/repos/projectdiscovery/uncover/commits/3f7b74af20b24a7d5477d1dc77f6ba881219b0de",
+      "decision": "drop",
+      "licenses": [
+        {
+          "spdx": "MIT",
+          "path": "LICENSE.md",
+          "url": "https://raw.githubusercontent.com/projectdiscovery/uncover/3f7b74af20b24a7d5477d1dc77f6ba881219b0de/LICENSE.md",
+          "sha256": "49982116f64385bdf8582a379e591a19d6040dec22e50e29dc311596d357af23"
+        }
+      ]
+    },
+    {
+      "component": "artifact_extraction",
+      "repository": "trufflesecurity/trufflehog",
+      "repository_url": "https://github.com/trufflesecurity/trufflehog",
+      "revision": "82df476e759c1448517fac6bfb3677685cdcd78a",
+      "revision_url": "https://github.com/trufflesecurity/trufflehog/tree/82df476e759c1448517fac6bfb3677685cdcd78a",
+      "commit_api_url": "https://api.github.com/repos/trufflesecurity/trufflehog/commits/82df476e759c1448517fac6bfb3677685cdcd78a",
+      "decision": "rewrite",
+      "licenses": [
+        {
+          "spdx": "AGPL-3.0-only",
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/trufflesecurity/trufflehog/82df476e759c1448517fac6bfb3677685cdcd78a/LICENSE",
+          "sha256": "33d580ea3d93edcb787c2fa826bbf5afcec3058ce4c894a6beaad3eb4f389d2b"
+        }
+      ]
+    },
+    {
+      "component": "asset_attribution",
+      "repository": "owasp-amass/amass",
+      "repository_url": "https://github.com/owasp-amass/amass",
+      "revision": "79299dce87b0085db0f2f4ef3e9c52cccb49f514",
+      "revision_url": "https://github.com/owasp-amass/amass/tree/79299dce87b0085db0f2f4ef3e9c52cccb49f514",
+      "commit_api_url": "https://api.github.com/repos/owasp-amass/amass/commits/79299dce87b0085db0f2f4ef3e9c52cccb49f514",
+      "decision": "drop",
+      "licenses": [
+        {
+          "spdx": "Apache-2.0",
+          "path": "LICENSE",
+          "url": "https://raw.githubusercontent.com/owasp-amass/amass/79299dce87b0085db0f2f4ef3e9c52cccb49f514/LICENSE",
+          "sha256": "52c474ee3b3c9e3ca40263ec3abf32fb6b9bcadd918759026b687dd71176c676"
+        }
+      ]
+    },
+    {
+      "component": "scheduling",
+      "repository": "mvniekerk/tokio-cron-scheduler",
+      "repository_url": "https://github.com/mvniekerk/tokio-cron-scheduler",
+      "revision": "ee987dd3917fbde8130bd05d6649897dde87523c",
+      "revision_url": "https://github.com/mvniekerk/tokio-cron-scheduler/tree/ee987dd3917fbde8130bd05d6649897dde87523c",
+      "commit_api_url": "https://api.github.com/repos/mvniekerk/tokio-cron-scheduler/commits/ee987dd3917fbde8130bd05d6649897dde87523c",
+      "decision": "rewrite",
+      "licenses": [
+        {
+          "spdx": "MIT",
+          "path": "LICENSE-MIT",
+          "url": "https://raw.githubusercontent.com/mvniekerk/tokio-cron-scheduler/ee987dd3917fbde8130bd05d6649897dde87523c/LICENSE-MIT",
+          "sha256": "6078f6a8b89739d0eeb4bd31de11236623664a1db35315d494d043f7c3a370cc"
+        },
+        {
+          "spdx": "Apache-2.0",
+          "path": "LICENSE-APACHE",
+          "url": "https://raw.githubusercontent.com/mvniekerk/tokio-cron-scheduler/ee987dd3917fbde8130bd05d6649897dde87523c/LICENSE-APACHE",
+          "sha256": "703e3deb15df5a610b5e2c7bc65f6296c86d13f62fdff3947aecdc176f1e8db8"
+        }
+      ]
+    }
+  ],
+  "benchmark": {
+    "fixture": {
+      "path": "benchmarks/morphling/fixtures/sanitized_exam.json",
+      "sha256": "ac508d21de4897cfb7da31f2dce6ebbb504ad84ff123f628be9c46726f72bd0e"
+    },
+    "artifacts": [
+      {
+        "path": "benchmarks/morphling/results/environment.json",
+        "sha256": "741fe831405ad952ba178fb569308a8da86a8e4873f0bd055376da2629376cb2"
+      },
+      {
+        "path": "benchmarks/morphling/results/runs.jsonl",
+        "sha256": "4dfefa71195648a5894dc7e263dcef2f37c877cf28a31c6f129fbf9e4f6b4366"
+      },
+      {
+        "path": "benchmarks/morphling/results/summary.json",
+        "sha256": "686e811e0d38d9cbb1904aeb42d5b60ae6bc3051b0bbdc07992c9e739d5db58a"
+      }
+    ],
+    "baseline_revision": "de79f7d3115aead54bdb859d292fb4a8cf74382a",
+    "current_revision": "de79f7d3115aead54bdb859d292fb4a8cf74382a+worktree.210b1f181683ce0c77f24dd1412ce213b12f58459d6c2094bb2a517be3fe57e8",
+    "minimum_repeats": 3,
+    "quality_gates": {
+      "coverage_min": 1.0,
+      "attribution_accuracy_min": 1.0,
+      "false_positive_max": 0,
+      "false_negative_max": 0,
+      "duplicate_output_count_max": 0,
+      "request_count_max": 0,
+      "retry_count_max": 0,
+      "failure_rate_max": 0.0
+    }
+  }
+}

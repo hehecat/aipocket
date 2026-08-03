@@ -6,4 +6,6 @@ pub enum CoreError {
     Config(String),
     #[error("invalid input: {0}")]
     InvalidInput(String),
+    #[error("outbound request denied: {0}")]
+    AuthorizationDenied(&'static str),
 }

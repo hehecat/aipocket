@@ -9,7 +9,11 @@ use axum::{
 };
 use parking_lot::Mutex;
 use serde_json::{Value, json};
-use std::{net::SocketAddr, sync::Arc};
+use std::{
+    net::SocketAddr,
+    sync::Arc,
+    time::{Duration, Instant},
+};
 
 async fn fixture(Query(query): Query<std::collections::HashMap<String, String>>) -> Json<Value> {
     if query.contains_key("qbase64") {
@@ -52,6 +56,17 @@ async fn rotating_search(
     State(tokens): State<Arc<Mutex<Vec<String>>>>,
     headers: HeaderMap,
 ) -> impl IntoResponse {
+    if headers
+        .get("user-agent")
+        .and_then(|value| value.to_str().ok())
+        .is_none_or(str::is_empty)
+    {
+        return (
+            StatusCode::FORBIDDEN,
+            Json(json!({"message":"User-Agent required"})),
+        )
+            .into_response();
+    }
     let authorization = headers
         .get("authorization")
         .and_then(|value| value.to_str().ok())
@@ -211,5 +226,32 @@ async fn clients_parse_recorded_fixture_shapes() {
             .len(),
         1
     );
+    task.abort();
+}
+
+#[tokio::test]
+async fn github_request_uses_configured_timeout() {
+    async fn slow_fixture() -> Json<Value> {
+        tokio::time::sleep(Duration::from_millis(500)).await;
+        Json(json!({"items": []}))
+    }
+
+    let app = Router::new().route("/search/code", get(slow_fixture));
+    let listener = tokio::net::TcpListener::bind("127.0.0.1:0").await.unwrap();
+    let address = listener.local_addr().unwrap();
+    let task = tokio::spawn(async move { axum::serve(listener, app).await.unwrap() });
+    let settings = Settings {
+        github_tokens: "token".into(),
+        github_api_base_url: format!("http://{address}"),
+        github_request_timeout: 0.05,
+        github_rate_limit_max_wait_seconds: 1.0,
+        ..Settings::default()
+    };
+    let client = GithubClient::new(reqwest::Client::new(), &settings);
+    let started = Instant::now();
+    let error = client.search_code("test", 1, 1).await.unwrap_err();
+
+    assert!(error.to_string().contains("timeout=true"));
+    assert!(started.elapsed() < Duration::from_secs(1));
     task.abort();
 }

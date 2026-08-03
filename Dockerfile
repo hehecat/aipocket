@@ -15,7 +15,7 @@ RUN --mount=type=cache,target=/usr/local/cargo/registry \
     cp /build/target/release/aipocket /build/aipocket
 
 FROM debian:bookworm-slim AS runtime
-RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates && rm -rf /var/lib/apt/lists/*
+RUN apt-get update && apt-get install -y --no-install-recommends ca-certificates curl && rm -rf /var/lib/apt/lists/*
 WORKDIR /app
 COPY --from=builder /build/aipocket /usr/local/bin/aipocket
 ENV RESULTS_DIR=/data/aipocket/results

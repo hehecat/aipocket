@@ -40,7 +40,7 @@ export function formatBalance(raw?: string): string | undefined {
   if (!trimmed) return undefined
   // Already labelled — do not force `$` onto CNY / other units.
   // Note: avoid `\b` around CJK (元/人民币); word-boundary is ASCII-oriented.
-  if (/[\$¥￥]|cny|usd|rmb|元|人民币|美元/i.test(trimmed)) return trimmed
+  if (/[$¥￥]|cny|usd|rmb|元|人民币|美元/i.test(trimmed)) return trimmed
   if (/^-?\d/.test(trimmed)) return `$${trimmed}`
   return trimmed
 }

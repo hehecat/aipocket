@@ -3,6 +3,26 @@
   "plugins": ["react", "typescript", "oxc"],
   "rules": {
     "react/rules-of-hooks": "error",
-    "react/only-export-components": ["warn", { "allowConstantExport": true }]
+    "react/only-export-components": [
+      "warn",
+      {
+        "allowConstantExport": true,
+        "allowExportNames": [
+          "badgeVariants",
+          "balanceSortValue",
+          "buttonVariants",
+          "evidenceObservedLabel",
+          "formatEvidenceRecord",
+          "parseBalance",
+          "parseBalanceNumber",
+          "providerBrand",
+          "providerBrandColor",
+          "tabsListVariants",
+          "useAuth",
+          "useKeyListView",
+          "useTheme"
+        ]
+      }
+    ]
   }
 }

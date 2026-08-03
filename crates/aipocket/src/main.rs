@@ -1,6 +1,6 @@
 mod maintenance;
 
-use aipocket_core::{ScanMode, Settings};
+use aipocket_core::{NetworkCapability, ScanMode, Settings};
 use aipocket_db::{Repository, connect_pg, ensure_schema};
 use anyhow::Result;
 use clap::{Parser, Subcommand, ValueEnum};
@@ -100,12 +100,14 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::ShodanInfo => {
+            settings.authorize_network(NetworkCapability::ProviderDiscovery)?;
             let http = http_client(&settings)?;
             let client = aipocket_clients::ShodanClient::new(http, &settings);
             println!("{}",serde_json::to_string_pretty(&client.info_all().await.into_iter().map(|(key,result)|serde_json::json!({"key":mask(&key),"result":result.ok()})).collect::<Vec<_>>())?);
             Ok(())
         }
         Command::CveSync => {
+            settings.authorize_network(NetworkCapability::ProviderDiscovery)?;
             let value = aipocket_clients::TavilyClient::new(http_client(&settings)?, &settings)
                 .search("AI security CVE latest")
                 .await?;
@@ -113,6 +115,7 @@ async fn main() -> Result<()> {
             Ok(())
         }
         Command::Balance => {
+            settings.authorize_network(NetworkCapability::CredentialRequest)?;
             let pool = connect_pg(&settings).await?;
             let repo = Repository::new(pool);
             let rows = repo.all_records("valid", false).await?;

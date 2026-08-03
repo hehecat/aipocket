@@ -2158,7 +2158,7 @@ mod tests {
         let input = tempfile::NamedTempFile::new().unwrap();
         let record =
             json!({"valid":true,"credential":{"apikey":"sk-real","apiurl":base,"host":base}});
-        std::fs::write(input.path(), format!("{}\n{}\n", record, record)).unwrap();
+        std::fs::write(input.path(), format!("{record}\n{record}\n")).unwrap();
         let settings = Settings {
             validate_timeout: 2.0,
             ..Settings::default()

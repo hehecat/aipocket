@@ -1,5 +1,5 @@
 use crate::pipeline::{as_json, extract_credentials, finalize_results, high_value_record};
-use aipocket_core::{Credential, ScanMode, ScanProgress, Settings};
+use aipocket_core::{Credential, NetworkCapability, ScanMode, ScanProgress, Settings};
 use aipocket_db::{DedupStore, Repository, RequestLedgerEntry, ScanLease};
 use aipocket_discovery::{DiscoveryProgress, DiscoverySource, SourceBudgets};
 use aipocket_prober::Validator;
@@ -85,6 +85,15 @@ impl Scanner {
             .iter()
             .map(|source| source.name().to_owned())
             .collect::<Vec<_>>();
+        if source_names.iter().any(|name| {
+            matches!(
+                name.as_str(),
+                "fofa" | "shodan" | "github" | "manual_enrich"
+            )
+        }) {
+            self.settings
+                .authorize_network(NetworkCapability::ProviderDiscovery)?;
+        }
         let started_at = chrono::Utc::now();
         let lease = ScanLease::acquire(&self.settings).await?;
         let run_id = resume_run_id
@@ -427,7 +436,24 @@ impl Scanner {
         }
         progress.candidates = credentials.len() as u64;
         events.send(ScanEvent::Progress(progress.clone())).ok();
-        for chunk in credentials.chunks(self.settings.validate_batch_size.max(1)) {
+        let credential_requests_authorized = self
+            .settings
+            .authorize_network(NetworkCapability::CredentialRequest)
+            .is_ok();
+        if !credential_requests_authorized && !credentials.is_empty() {
+            events
+                .send(ScanEvent::Log(
+                    "credential candidates retained for offline review; network validation is not authorized"
+                        .into(),
+                ))
+                .ok();
+        }
+        let validation_credentials = if credential_requests_authorized {
+            credentials.as_slice()
+        } else {
+            &[]
+        };
+        for chunk in validation_credentials.chunks(self.settings.validate_batch_size.max(1)) {
             if cancel.is_cancelled() {
                 return self.interrupt(&run_id, progress, lease, &events).await;
             }
@@ -879,14 +905,16 @@ impl Scanner {
             };
             match text {
                 Ok(text) => {
-                    for secret in aipocket_discovery::github_artifacts::extract_artifact_text(
+                    let mut secrets = aipocket_discovery::github_artifacts::extract_artifact_text(
                         &text,
                         "",
                         &item.source_kind,
                         "context",
                         &item.file_path,
                         &item.object_sha,
-                    ) {
+                    );
+                    redact_artifact_raw_contexts(&mut secrets);
+                    for secret in secrets {
                         observations.push(github_work_observation(&item, secret));
                     }
                     if let Err(error) =
@@ -1017,10 +1045,32 @@ fn github_shard_id(lane: &str, pack_id: &str, query: &str) -> String {
     )
 }
 
+fn redact_artifact_raw_contexts(
+    secrets: &mut [aipocket_discovery::github_artifacts::ExtractedArtifactSecret],
+) {
+    let values = secrets
+        .iter()
+        .map(|secret| secret.credential.apikey.clone())
+        .filter(|value| !value.is_empty())
+        .collect::<Vec<_>>();
+    for secret in secrets {
+        for value in &values {
+            secret.credential.raw_context =
+                secret.credential.raw_context.replace(value, "[REDACTED]");
+        }
+    }
+}
+
 fn github_work_observation(
     item: &aipocket_db::ArtifactWorkItem,
-    secret: aipocket_discovery::github_artifacts::ExtractedArtifactSecret,
+    mut secret: aipocket_discovery::github_artifacts::ExtractedArtifactSecret,
 ) -> aipocket_discovery::CredentialObservation {
+    if !secret.credential.apikey.is_empty() {
+        secret.credential.raw_context = secret
+            .credential
+            .raw_context
+            .replace(&secret.credential.apikey, "[REDACTED]");
+    }
     aipocket_discovery::CredentialObservation {
         credential: secret.credential,
         provenance: aipocket_discovery::ArtifactProvenance {
@@ -1109,7 +1159,10 @@ mod tests {
     use async_trait::async_trait;
     use axum::{Json, Router, routing::get};
     use serde_json::json;
-    use std::time::Duration;
+    use std::{
+        sync::atomic::{AtomicUsize, Ordering},
+        time::Duration,
+    };
 
     /// All scanner unit tests must stay offline-friendly and non-`#[ignore]`:
     /// GitHub CI runs `cargo test --workspace` without including ignored tests for
@@ -1134,6 +1187,27 @@ mod tests {
 
     struct BlockingSource {
         started: Arc<tokio::sync::Barrier>,
+    }
+
+    struct CountingSource {
+        name: &'static str,
+        calls: Arc<AtomicUsize>,
+    }
+
+    #[async_trait]
+    impl DiscoverySource for CountingSource {
+        fn name(&self) -> &'static str {
+            self.name
+        }
+
+        fn is_configured(&self) -> bool {
+            true
+        }
+
+        async fn fetch(&self, _: &SourceBudgets, _: ScanMode) -> Result<SourceFetchResult> {
+            self.calls.fetch_add(1, Ordering::SeqCst);
+            Ok(SourceFetchResult::default())
+        }
     }
 
     #[async_trait]
@@ -1380,6 +1454,9 @@ mod tests {
             github_code_query_budget: 2,
             github_commit_query_budget: 2,
             planner_metrics_version: 3,
+            outbound_network_enabled: true,
+            provider_discovery_authorized: true,
+            credential_requests_authorized: true,
             ..Settings::default()
         }
     }
@@ -1433,6 +1510,36 @@ mod tests {
         }
     }
 
+    #[tokio::test]
+    async fn security_denied_discovery_makes_zero_provider_calls() {
+        let settings = Settings::default();
+        let calls = [
+            Arc::new(AtomicUsize::new(0)),
+            Arc::new(AtomicUsize::new(0)),
+            Arc::new(AtomicUsize::new(0)),
+        ];
+        let sources = ["fofa", "shodan", "github"]
+            .into_iter()
+            .zip(calls.iter())
+            .map(|(name, calls)| {
+                Arc::new(CountingSource {
+                    name,
+                    calls: Arc::clone(calls),
+                }) as Arc<dyn DiscoverySource>
+            })
+            .collect();
+        let scanner = Scanner::new(Arc::new(settings), Repository::new(None), test_http());
+        let (tx, _rx) = mpsc::unbounded_channel();
+
+        let error = scanner
+            .run(sources, ScanMode::Incremental, CancellationToken::new(), tx)
+            .await
+            .expect_err("provider discovery must be denied by default");
+
+        assert!(error.to_string().contains("outbound request denied"));
+        assert_eq!(calls.map(|calls| calls.load(Ordering::SeqCst)), [0, 0, 0]);
+    }
+
     #[test]
     fn extracts_and_deduplicates_credentials() {
         let hits = vec![json!({
@@ -1457,7 +1564,7 @@ mod tests {
     }
 
     #[test]
-    fn scanner_helpers_preserve_artifacts_phases_and_observations() {
+    fn security_scanner_helpers_redact_artifacts_and_nested_output() {
         assert_eq!(mode_name(&ScanMode::Full), "full");
         assert_eq!(mode_name(&ScanMode::Incremental), "incremental");
         assert!(phase_rank("finished") > phase_rank("validate"));
@@ -1507,12 +1614,14 @@ mod tests {
         assert_eq!(hits[0]["host"], "https://observation.example/v1");
         assert_eq!(hits[0]["_source"], "github");
 
+        let sentinel = "sk-work-obs-abcdefghijkl";
         let observation = github_work_observation(
             &work_item("code_snapshot", "blob-ok", "acme/demo"),
             aipocket_discovery::github_artifacts::ExtractedArtifactSecret {
                 credential: Credential {
-                    apikey: "sk-work-obs-abcdefghijkl".into(),
+                    apikey: sentinel.into(),
                     apiurl: "https://api.openai.com/v1".into(),
+                    raw_context: format!("OPENAI_API_KEY={sentinel}\nbackup={sentinel}"),
                     ..Default::default()
                 },
                 object_sha: "blob-ok".into(),
@@ -1525,6 +1634,68 @@ mod tests {
         );
         assert_eq!(observation.provenance.repository_full_name, "acme/demo");
         assert_eq!(observation.query_id, "q1");
+        assert_eq!(observation.credential.apikey, sentinel);
+        assert_eq!(
+            observation.credential.raw_context,
+            "OPENAI_API_KEY=[REDACTED]\nbackup=[REDACTED]"
+        );
+        assert!(!observation.credential.raw_context.contains(sentinel));
+
+        let second_sentinel = "sk-second-observation-abcdefgh";
+        let shared_context = format!("first={sentinel}\nsecond={second_sentinel}");
+        let mut extracted = vec![
+            aipocket_discovery::github_artifacts::ExtractedArtifactSecret {
+                credential: Credential {
+                    apikey: sentinel.into(),
+                    raw_context: shared_context.clone(),
+                    ..Default::default()
+                },
+                object_sha: "blob-ok".into(),
+                file_path: ".env".into(),
+                source_kind: "code_snapshot".into(),
+                change_side: "context".into(),
+                line_start: Some(1),
+                line_end: Some(1),
+            },
+            aipocket_discovery::github_artifacts::ExtractedArtifactSecret {
+                credential: Credential {
+                    apikey: second_sentinel.into(),
+                    raw_context: shared_context,
+                    ..Default::default()
+                },
+                object_sha: "blob-ok".into(),
+                file_path: ".env".into(),
+                source_kind: "code_snapshot".into(),
+                change_side: "context".into(),
+                line_start: Some(2),
+                line_end: Some(2),
+            },
+        ];
+        redact_artifact_raw_contexts(&mut extracted);
+        for secret in extracted {
+            assert!(!secret.credential.raw_context.contains(sentinel));
+            assert!(!secret.credential.raw_context.contains(second_sentinel));
+            assert_eq!(
+                secret.credential.raw_context,
+                "first=[REDACTED]\nsecond=[REDACTED]"
+            );
+        }
+
+        let mut output = json!({
+            "result": {
+                "api_key": sentinel,
+                "items": [
+                    {"Authorization": format!("Bearer {sentinel}")},
+                    {"password": sentinel}
+                ]
+            }
+        });
+        aipocket_core::redact_json_secrets(&mut output);
+        let serialized = serde_json::to_string(&output).unwrap();
+        assert!(!serialized.contains(sentinel));
+        assert_eq!(output["result"]["api_key"], "[REDACTED]");
+        assert_eq!(output["result"]["items"][0]["Authorization"], "[REDACTED]");
+        assert_eq!(output["result"]["items"][1]["password"], "[REDACTED]");
 
         let root = std::env::temp_dir().join(format!("aipocket-scanner-{}", uuid::Uuid::new_v4()));
         std::fs::create_dir_all(&root).unwrap();

@@ -1,4 +1,4 @@
-import { useState } from "react"
+import { useEffect, useRef, useState } from "react"
 import { Navigate, useNavigate } from "react-router-dom"
 import { useMutation } from "@tanstack/react-query"
 import { ArrowRight, Eye, EyeOff, Loader2, LockKeyhole, Shield } from "lucide-react"
@@ -14,13 +14,28 @@ export default function LoginPage() {
   const navigate = useNavigate()
   const [password, setPassword] = useState("")
   const [reveal, setReveal] = useState(false)
+  const [errorMessage, setErrorMessage] = useState<string | null>(null)
+  const passwordRef = useRef<HTMLInputElement>(null)
+
+  useEffect(() => {
+    if (errorMessage) passwordRef.current?.focus()
+  }, [errorMessage])
+
+  const showError = (message: string) => {
+    setErrorMessage(message)
+    passwordRef.current?.focus()
+    toast.error(message)
+  }
 
   const mutation = useMutation({
     mutationFn: (value: string) => login(value),
     onSuccess: () => navigate("/history", { replace: true }),
     onError: (error) => {
-      const message = error instanceof ApiError ? error.message : "登录失败，请重试"
-      toast.error(message)
+      showError(
+        error instanceof ApiError && error.status === 401
+          ? "访问密码不正确，请重试"
+          : "登录失败，请稍后重试",
+      )
     },
   })
 
@@ -29,9 +44,10 @@ export default function LoginPage() {
   const submit = () => {
     const value = password.trim()
     if (value.length === 0) {
-      toast.error("请输入访问密码")
+      showError("请输入访问密码")
       return
     }
+    setErrorMessage(null)
     mutation.mutate(value)
   }
 
@@ -62,25 +78,36 @@ export default function LoginPage() {
           <div className="relative flex items-center">
             <LockKeyhole className="pointer-events-none absolute left-3.5 size-[15px] text-text-muted" />
             <Input
+              ref={passwordRef}
               id="login-password"
               type={reveal ? "text" : "password"}
               autoComplete="current-password"
               autoFocus
               value={password}
-              onChange={(event) => setPassword(event.target.value)}
+              onChange={(event) => {
+                setPassword(event.target.value)
+                setErrorMessage(null)
+              }}
               disabled={mutation.isPending}
+              aria-invalid={errorMessage ? true : undefined}
+              aria-describedby={errorMessage ? "login-error" : undefined}
               placeholder="••••••••••••"
-              className="border-border-primary bg-surface-inset px-10 font-mono text-sm dark:bg-surface-inset"
+              className="h-11 border-border-primary bg-surface-inset px-10 font-mono text-sm dark:bg-surface-inset"
             />
             <button
               type="button"
               onClick={() => setReveal((prev) => !prev)}
               aria-label={reveal ? "隐藏密码" : "显示密码"}
-              className="absolute right-3.5 text-text-muted transition-colors hover:text-text-secondary"
+              className="absolute right-0 flex size-11 items-center justify-center text-text-muted transition-colors hover:text-text-secondary focus-visible:outline-none focus-visible:ring-[3px] focus-visible:ring-ring/50"
             >
               {reveal ? <EyeOff className="size-[15px]" /> : <Eye className="size-[15px]" />}
             </button>
           </div>
+          {errorMessage ? (
+            <p id="login-error" role="alert" className="font-mono text-[11px] text-destructive">
+              {errorMessage}
+            </p>
+          ) : null}
         </Field>
 
         <Button type="submit" className="w-full" disabled={mutation.isPending}>

@@ -4,7 +4,7 @@ use crate::{
     settings::{SettingsUpdate, SettingsView, persist_env},
     state::AppState,
 };
-use aipocket_core::{Credential, ScanMode, ScanStatus};
+use aipocket_core::{Credential, NetworkCapability, ScanMode, ScanStatus};
 use aipocket_db::mask_apikey;
 use axum::{
     Json, Router,
@@ -21,6 +21,25 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 use std::{convert::Infallible, path::PathBuf, time::Duration};
 use tokio_stream::wrappers::BroadcastStream;
+
+async fn authorize_network(
+    state: &AppState,
+    capability: NetworkCapability,
+) -> Result<(), ApiError> {
+    state
+        .settings
+        .read()
+        .await
+        .authorize_network(capability)
+        .map_err(|error| {
+            ApiError::new(
+                StatusCode::FORBIDDEN,
+                "authorization_denied",
+                error.to_string(),
+            )
+        })
+}
+
 pub fn router() -> Router<AppState> {
     Router::new()
         .route("/api/health", get(health))
@@ -269,6 +288,7 @@ fn parse_failed_batch(path: &std::path::Path) -> (usize, Option<i64>) {
 }
 
 async fn cve_sync(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::ProviderDiscovery).await?;
     let queries = [
         "latest AI infrastructure security CVE GHSA Dify LiteLLM Flowise Langflow Open WebUI",
         "latest AI gateway agent framework CVE GHSA MLflow vLLM OpenRouter FastGPT",
@@ -471,6 +491,7 @@ async fn key_models(
     State(s): State<AppState>,
     Json(b): Json<KeyRef>,
 ) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::CredentialRequest).await?;
     if b.apikey.is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -603,6 +624,7 @@ async fn key_balance(
     State(s): State<AppState>,
     Json(b): Json<BalanceRequest>,
 ) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::CredentialRequest).await?;
     if b.apikey.is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -647,6 +669,7 @@ async fn keys_balance(
     State(s): State<AppState>,
     Json(b): Json<BatchBalanceRequest>,
 ) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::CredentialRequest).await?;
     if b.provider.trim().is_empty() || b.provider.trim().eq_ignore_ascii_case("all") {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -742,6 +765,7 @@ async fn key_chat(
     State(s): State<AppState>,
     Json(b): Json<ChatRequest>,
 ) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::CredentialRequest).await?;
     if b.apikey.is_empty() {
         return Err(ApiError::new(
             StatusCode::BAD_REQUEST,
@@ -1235,13 +1259,15 @@ async fn update_settings(
         json!({"updated":updates.keys().collect::<Vec<_>>(),"hot_reloaded":updates.keys().collect::<Vec<_>>(),"restart_required":[],"settings":SettingsView::from_settings(&settings)}),
     ))
 }
-async fn check_fofa(_: Auth, State(s): State<AppState>) -> Json<Value> {
-    match s.fofa().await.check().await {
+async fn check_fofa(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::ProviderDiscovery).await?;
+    Ok(match s.fofa().await.check().await {
         Ok(_) => Json(json!({"status":"ok","message":"reachable","consumes_quota":true})),
         Err(e) => Json(json!({"status":"invalid","message":e.to_string(),"consumes_quota":true})),
-    }
+    })
 }
-async fn check_shodan(_: Auth, State(s): State<AppState>) -> Json<Value> {
+async fn check_shodan(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::ProviderDiscovery).await?;
     let results = s.shodan().await.info_all().await;
     let keys:Vec<_>=results.iter().map(|(key,r)|match r{Ok(info)=>json!({"key_masked":mask_apikey(key),"plan":info.plan,"query_credits":info.query_credits,"alive":true}),Err(_)=>json!({"key_masked":mask_apikey(key),"plan":"","query_credits":0,"alive":false})}).collect();
     let total = keys
@@ -1252,18 +1278,19 @@ async fn check_shodan(_: Auth, State(s): State<AppState>) -> Json<Value> {
         .iter()
         .filter(|v| v.get("alive") == Some(&Value::Bool(false)))
         .count();
-    Json(
+    Ok(Json(
         json!({"keys":keys,"total_query_credits":total,"n_keys":results.len(),"n_dead":dead,"consumes_quota":false}),
-    )
+    ))
 }
-async fn check_github(_: Auth, State(s): State<AppState>) -> Json<Value> {
+async fn check_github(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
+    authorize_network(&s, NetworkCapability::ProviderDiscovery).await?;
     let n = s.settings.read().await.github_token_list().len();
     if n == 0 {
-        return Json(
+        return Ok(Json(
             json!({"status":"disabled","message":"no tokens","core_remaining":null,"search_remaining":null,"code_search_remaining":null,"n_tokens":0}),
-        );
+        ));
     }
-    match s.github().await.rate_limit().await {
+    Ok(match s.github().await.rate_limit().await {
         Ok(v) => Json(
             json!({"status":"ok","message":"reachable","core_remaining":v.pointer("/resources/core/remaining"),"search_remaining":v.pointer("/resources/search/remaining"),"code_search_remaining":v.pointer("/resources/code_search/remaining"),"n_tokens":n}),
         ),
@@ -1285,7 +1312,7 @@ async fn check_github(_: Auth, State(s): State<AppState>) -> Json<Value> {
                 json!({"status":"invalid","message":message,"core_remaining":null,"search_remaining":null,"code_search_remaining":null,"n_tokens":n}),
             )
         }
-    }
+    })
 }
 #[derive(Deserialize)]
 struct ScanStart {

@@ -38,6 +38,12 @@ pub struct Settings {
     pub min_probe_evidence_score: i32,
     pub intrusive_checks: bool,
     pub authorized_probe_scope: String,
+    /// Master switch for all outbound provider and credential requests.
+    pub outbound_network_enabled: bool,
+    /// Explicit authorization for FOFA, Shodan, GitHub, and Tavily requests.
+    pub provider_discovery_authorized: bool,
+    /// Explicit authorization to send discovered credentials to provider endpoints.
+    pub credential_requests_authorized: bool,
     pub probe_vuln_classes: String,
     pub probe_max_risk: u8,
     pub probe_ssrf_enabled: bool,
@@ -136,6 +142,9 @@ impl Default for Settings {
             min_probe_evidence_score: 50,
             intrusive_checks: false,
             authorized_probe_scope: String::new(),
+            outbound_network_enabled: false,
+            provider_discovery_authorized: false,
+            credential_requests_authorized: false,
             probe_vuln_classes: "*".into(),
             probe_max_risk: 1,
             probe_ssrf_enabled: false,
@@ -206,7 +215,30 @@ impl Default for Settings {
     }
 }
 
+#[derive(Clone, Copy, Debug, PartialEq, Eq)]
+pub enum NetworkCapability {
+    ProviderDiscovery,
+    CredentialRequest,
+}
+
 impl Settings {
+    pub fn authorize_network(&self, capability: NetworkCapability) -> Result<(), CoreError> {
+        if !self.outbound_network_enabled {
+            return Err(CoreError::AuthorizationDenied(
+                "outbound network is disabled",
+            ));
+        }
+        match capability {
+            NetworkCapability::ProviderDiscovery if !self.provider_discovery_authorized => Err(
+                CoreError::AuthorizationDenied("provider discovery is not authorized"),
+            ),
+            NetworkCapability::CredentialRequest if !self.credential_requests_authorized => Err(
+                CoreError::AuthorizationDenied("credential requests are not authorized"),
+            ),
+            _ => Ok(()),
+        }
+    }
+
     pub fn load() -> Result<Self, CoreError> {
         Self::load_from(Path::new(".env"))
     }
@@ -340,6 +372,32 @@ impl Settings {
     }
 }
 
+pub fn redact_json_secrets(value: &mut serde_json::Value) {
+    match value {
+        serde_json::Value::Object(map) => {
+            for (key, value) in map {
+                let key = key.to_ascii_lowercase();
+                if key.contains("key")
+                    || key.contains("token")
+                    || key.contains("password")
+                    || key.contains("secret")
+                    || key == "authorization"
+                {
+                    *value = serde_json::Value::String("[REDACTED]".into());
+                } else {
+                    redact_json_secrets(value);
+                }
+            }
+        }
+        serde_json::Value::Array(values) => {
+            for value in values {
+                redact_json_secrets(value);
+            }
+        }
+        _ => {}
+    }
+}
+
 fn normalize_list(value: &str) -> String {
     split_list(value).join(",")
 }
@@ -411,6 +469,79 @@ mod tests {
             ..Settings::default()
         };
         assert!(settings.normalize().is_err());
+    }
+
+    #[test]
+    fn network_capabilities_are_default_deny_and_require_explicit_grants() {
+        let mut settings = Settings::default();
+        assert!(matches!(
+            settings.authorize_network(NetworkCapability::ProviderDiscovery),
+            Err(CoreError::AuthorizationDenied(
+                "outbound network is disabled"
+            ))
+        ));
+        assert!(matches!(
+            settings.authorize_network(NetworkCapability::CredentialRequest),
+            Err(CoreError::AuthorizationDenied(
+                "outbound network is disabled"
+            ))
+        ));
+
+        settings.outbound_network_enabled = true;
+        assert!(matches!(
+            settings.authorize_network(NetworkCapability::ProviderDiscovery),
+            Err(CoreError::AuthorizationDenied(
+                "provider discovery is not authorized"
+            ))
+        ));
+        assert!(matches!(
+            settings.authorize_network(NetworkCapability::CredentialRequest),
+            Err(CoreError::AuthorizationDenied(
+                "credential requests are not authorized"
+            ))
+        ));
+
+        settings.provider_discovery_authorized = true;
+        settings.credential_requests_authorized = true;
+        assert!(
+            settings
+                .authorize_network(NetworkCapability::ProviderDiscovery)
+                .is_ok()
+        );
+        assert!(
+            settings
+                .authorize_network(NetworkCapability::CredentialRequest)
+                .is_ok()
+        );
+    }
+
+    #[test]
+    fn recursively_redacts_secret_fields() {
+        let mut value = serde_json::json!({
+            "api_key": "top-secret",
+            "nested": {
+                "Authorization": "Bearer private",
+                "items": [
+                    {"accessToken": "token-value", "name": "kept"},
+                    {"password": "password-value", "count": 2}
+                ]
+            },
+            "public": "visible"
+        });
+
+        redact_json_secrets(&mut value);
+
+        assert_eq!(value["api_key"], "[REDACTED]");
+        assert_eq!(value["nested"]["Authorization"], "[REDACTED]");
+        assert_eq!(value["nested"]["items"][0]["accessToken"], "[REDACTED]");
+        assert_eq!(value["nested"]["items"][0]["name"], "kept");
+        assert_eq!(value["nested"]["items"][1]["password"], "[REDACTED]");
+        assert_eq!(value["nested"]["items"][1]["count"], 2);
+        assert_eq!(value["public"], "visible");
+        assert!(!value.to_string().contains("top-secret"));
+        assert!(!value.to_string().contains("Bearer private"));
+        assert!(!value.to_string().contains("token-value"));
+        assert!(!value.to_string().contains("password-value"));
     }
 
     #[test]

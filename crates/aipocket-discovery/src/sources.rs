@@ -415,8 +415,12 @@ impl DiscoverySource for GithubSource {
             .iter()
             .filter(|query| selected.is_none_or(|values| values.contains(query)))
             .collect::<Vec<_>>();
-        let code_limit = budgets.github_code.unwrap_or(queries.len());
-        for query in queries.iter().copied().take(code_limit) {
+        let code_limit = budgets
+            .github_code
+            .unwrap_or(queries.len())
+            .min(queries.len());
+        for (query_offset, query) in queries.iter().copied().take(code_limit).enumerate() {
+            let query_index = query_offset + 1;
             let shard_id = checkpoint_shard_id(&self.pack_id, query, "code_snapshot");
             let start_page = budgets
                 .checkpoints
@@ -426,10 +430,19 @@ impl DiscoverySource for GithubSource {
                 .and_then(Value::as_u64)
                 .unwrap_or(1) as usize;
             for page in start_page..=5 {
+                report_progress(budgets, "github", query_index, code_limit, 0, &result);
                 let value = match self.client.search_code(query, page, self.per_page).await {
                     Ok(value) => value,
                     Err(error) => {
                         result.errors.push(error.to_string());
+                        report_progress(
+                            budgets,
+                            "github",
+                            query_index,
+                            code_limit,
+                            page as u32,
+                            &result,
+                        );
                         break;
                     }
                 };
@@ -439,10 +452,20 @@ impl DiscoverySource for GithubSource {
                     .cloned()
                     .unwrap_or_default();
                 let count = items.len();
-                for item in items {
+                for (item_index, item) in items.into_iter().enumerate() {
                     self.process_code_item(&item, query, &mut result).await;
                     if let Some(work) = artifact_work(&item, query, "code_snapshot") {
                         result.artifact_work.push(work);
+                    }
+                    if (item_index + 1) % 10 == 0 {
+                        report_progress(
+                            budgets,
+                            "github",
+                            query_index,
+                            code_limit,
+                            page as u32,
+                            &result,
+                        );
                     }
                 }
                 result.query_usage.push(QueryUsage {
@@ -454,6 +477,14 @@ impl DiscoverySource for GithubSource {
                     lane: "code_snapshot".into(),
                     ..Default::default()
                 });
+                report_progress(
+                    budgets,
+                    "github",
+                    query_index,
+                    code_limit,
+                    page as u32,
+                    &result,
+                );
                 if self.per_page <= 1 {
                     break;
                 }
@@ -469,11 +500,14 @@ impl DiscoverySource for GithubSource {
             ));
         }
         let commit_limit = budgets.github_commit.unwrap_or(0).min(queries.len());
-        for query in queries.iter().copied().take(commit_limit) {
+        for (query_offset, query) in queries.iter().copied().take(commit_limit).enumerate() {
+            let query_index = query_offset + 1;
+            report_progress(budgets, "github", query_index, commit_limit, 0, &result);
             let value = match self.client.search_commits(query, 1, self.per_page).await {
                 Ok(value) => value,
                 Err(error) => {
                     result.errors.push(error.to_string());
+                    report_progress(budgets, "github", query_index, commit_limit, 1, &result);
                     continue;
                 }
             };
@@ -524,6 +558,7 @@ impl DiscoverySource for GithubSource {
                 lane: "commit_message".into(),
                 ..Default::default()
             });
+            report_progress(budgets, "github", query_index, commit_limit, 1, &result);
             result.checkpoint_updates.push(checkpoint(
                 &self.pack_id,
                 query,

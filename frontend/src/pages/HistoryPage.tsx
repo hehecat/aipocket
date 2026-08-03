@@ -7,6 +7,7 @@ import { api, type RunDay, type RunSummary } from "@/lib/api"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import { RunLogDialog } from "@/components/run-log-dialog"
+import { QueryErrorState } from "@/components/query-error-state"
 import { cn } from "@/lib/utils"
 
 const WEEKDAYS = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"]
@@ -132,6 +133,7 @@ function HistoryContent({
   onScan,
   onLog,
   onDelete,
+  onRetry,
   deletingRunId,
 }: Readonly<{
   isPending: boolean
@@ -142,6 +144,7 @@ function HistoryContent({
   onScan: () => void
   onDelete: (run: RunSummary) => void
   onLog: (run: RunSummary) => void
+  onRetry: () => void
   deletingRunId: string
 }>) {
   if (isPending) {
@@ -154,14 +157,7 @@ function HistoryContent({
   }
 
   if (isError) {
-    return (
-      <StateMessage>
-        <span className="text-sm text-danger">加载失败</span>
-        <span className="font-mono text-xs text-text-muted">
-          {error instanceof Error ? error.message : "无法获取扫描记录"}
-        </span>
-      </StateMessage>
-    )
+    return <QueryErrorState error={error} onRetry={onRetry} title="扫描记录加载失败" />
   }
 
   if (days.length === 0) {
@@ -237,7 +233,7 @@ export default function HistoryPage() {
     deleteMutation.mutate(run.run_id)
   }
   const [query, setQuery] = useState("")
-  const { data, isPending, isError, error } = useQuery({
+  const { data, isPending, isError, error, refetch } = useQuery({
     queryKey: ["runs"],
     queryFn: () => api.getRuns(),
   })
@@ -290,6 +286,7 @@ export default function HistoryPage() {
           onScan={() => navigate("/scan")}
           onDelete={deleteEmptyRun}
           onLog={setLogRun}
+          onRetry={() => void refetch()}
           deletingRunId={deletingRunId}
         />
       </div>

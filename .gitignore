@@ -72,3 +72,10 @@ preview/*.js
 
 # Design files
 *.pen
+
+# Local compose credentials (mock values documented in LOCAL_DEPLOYMENT.md)
+/compose.local.env
+
+# Local build/test artifacts (large)
+/benchmarks/
+/target-index-check/

@@ -1,0 +1,84 @@
+name: ${COMPOSE_PROJECT_NAME:-aipocket-local}
+
+services:
+  backend:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      RESULTS_DIR: /var/lib/aipocket/results
+      DEDUP_REDIS_URL: redis://redis:6379/0
+      DATABASE_URL: postgres://aipocket:aipocket@postgres:5432/aipocket
+      WEB_PASSWORD: ${WEB_PASSWORD:-local-smoke-password}
+      WEB_JWT_SECRET: ${WEB_JWT_SECRET:-local-smoke-jwt-secret-not-for-production}
+      GITHUB_HUNTER_ENABLED: "false"
+      OUTBOUND_NETWORK_ENABLED: "true"
+      PROVIDER_DISCOVERY_AUTHORIZED: "true"
+      CREDENTIAL_REQUESTS_AUTHORIZED: "true"
+    ports:
+      - "127.0.0.1:${AIPOCKET_API_PORT:-18000}:8000"
+    volumes:
+      - results:/var/lib/aipocket/results
+      - appdata:/app
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "curl", "--fail", "--silent", "--show-error", "http://127.0.0.1:8000/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 10s
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    ports:
+      - "127.0.0.1:${AIPOCKET_WEB_PORT:-13080}:80"
+    depends_on:
+      backend:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://127.0.0.1/api/health"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+      start_period: 5s
+
+  postgres:
+    image: postgres:16-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: aipocket
+      POSTGRES_PASSWORD: aipocket
+      POSTGRES_DB: aipocket
+    volumes:
+      - postgres-data:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U aipocket -d aipocket"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    command: ["redis-server", "--save", "", "--appendonly", "no"]
+    volumes:
+      - redis-data:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "ping"]
+      interval: 5s
+      timeout: 3s
+      retries: 20
+
+volumes:
+  results:
+  postgres-data:
+  redis-data:
+  appdata:

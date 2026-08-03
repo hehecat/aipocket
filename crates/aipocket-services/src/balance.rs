@@ -1172,7 +1172,7 @@ impl BalanceService {
             .any(|field| info.get(*field).and_then(strict_number).is_some());
         let unlimited_envelope = info.contains_key("max_budget")
             && info.get("models").and_then(Value::as_array).is_some();
-        if (!has_budget_signal && !unlimited_envelope) || (!has_spend && !has_budget_signal) {
+        if !(has_budget_signal || has_spend && unlimited_envelope) {
             return Ok(Default::default());
         }
         let spend = spend_value.and_then(strict_number).unwrap_or(0.0);
