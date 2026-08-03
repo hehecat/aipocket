@@ -178,6 +178,32 @@ pub const PRODUCT_QUERIES: &[(&str, &[&str])] = &[
         ],
     ),
     ("Codex CLI", &["body=\"codex\" && body=\"OPENAI_API_KEY\""]),
+    (
+        "Grafana",
+        &[
+            "body=\"grafanaBootData\" && body=\"grafana\"",
+            "body=\"GF_SECURITY_ADMIN_PASSWORD\"",
+        ],
+    ),
+    ("Jenkins", &["body=\"Jenkins\" && body=\"Jenkins ver.\""]),
+    ("GitLab", &["body=\"GitLab\" && body=\"remember_me\""]),
+    (
+        "Nacos",
+        &[
+            "body=\"nacos\" && body=\"Nacos\"",
+            "body=\"NACOS_AUTH_TOKEN\"",
+        ],
+    ),
+    ("Spring Actuator", &["body=\"actuator\" && body=\"_links\""]),
+    ("MinIO", &["body=\"MinIO Console\""]),
+    (
+        "Elasticsearch",
+        &[
+            "body=\"elasticsearch\" && body=\"cluster_name\"",
+            "body=\"ES_JAVA_OPTS\" && body=\"elasticsearch.yml\"",
+        ],
+    ),
+    ("Kubernetes Dashboard", &["body=\"Kubernetes Dashboard\""]),
 ];
 
 pub fn product_for_query(query: &str) -> Option<&'static str> {
@@ -237,6 +263,14 @@ fn canonical_product(product: &str) -> &'static str {
         "ChatGPT-Next-Web" => "chatgpt_next_web",
         "OpenRouter" => "openrouter",
         "LobeChat" => "lobechat",
+        "Grafana" => "grafana",
+        "Jenkins" => "jenkins",
+        "GitLab" => "gitlab",
+        "Nacos" => "nacos",
+        "Spring Actuator" => "spring_actuator",
+        "MinIO" => "minio",
+        "Elasticsearch" => "elasticsearch",
+        "Kubernetes Dashboard" => "kubernetes_dashboard",
         _ => "generic",
     }
 }
@@ -264,7 +298,7 @@ mod tests {
     #[test]
     fn inventory_covers_runtime_queries() {
         assert_eq!(DIRECT_CREDENTIAL_QUERIES.len(), 31);
-        assert_eq!(PRODUCT_QUERIES.len(), 25);
+        assert_eq!(PRODUCT_QUERIES.len(), 33);
         assert!(fofa_queries().len() > 60);
     }
     #[test]

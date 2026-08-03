@@ -32,6 +32,26 @@ passive_prober!(LibreChatProber, "librechat", &["/api/config"]);
 passive_prober!(LobeChatProber, "lobechat", &["/api/config"]);
 passive_prober!(OpenRouterProber, "openrouter", &["/api/v1/models"]);
 passive_prober!(PortkeyProber, "portkey", &["/v1/models"]);
+passive_prober!(GrafanaProber, "grafana", &["/api/health"]);
+passive_prober!(JenkinsProber, "jenkins", &["/api/json"]);
+passive_prober!(GitLabProber, "gitlab", &["/api/v4/projects"]);
+passive_prober!(NacosProber, "nacos", &["/nacos/v1/cs/configs"]);
+passive_prober!(
+    SpringActuatorProber,
+    "spring_actuator",
+    &["/actuator/env", "/actuator/health"]
+);
+passive_prober!(MinioProber, "minio", &["/minio/health/live"]);
+passive_prober!(
+    ElasticsearchProber,
+    "elasticsearch",
+    &["/_cluster/health", "/_cat/indices"]
+);
+passive_prober!(
+    K8sDashboardProber,
+    "kubernetes_dashboard",
+    &["/api/v1/namespaces"]
+);
 pub fn default_probers() -> Vec<Box<dyn Prober>> {
     vec![
         Box::new(DifyProber),
@@ -48,5 +68,13 @@ pub fn default_probers() -> Vec<Box<dyn Prober>> {
         Box::new(LobeChatProber),
         Box::new(OpenRouterProber),
         Box::new(PortkeyProber),
+        Box::new(GrafanaProber),
+        Box::new(JenkinsProber),
+        Box::new(GitLabProber),
+        Box::new(NacosProber),
+        Box::new(SpringActuatorProber),
+        Box::new(MinioProber),
+        Box::new(ElasticsearchProber),
+        Box::new(K8sDashboardProber),
     ]
 }

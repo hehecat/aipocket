@@ -272,6 +272,87 @@ pub const PACKS: &[ProviderPack] = &[
         shodan_queries: &["http.title:vllm"],
         github_terms: &["vllm --api-key", "VLLM_API_KEY"],
     },
+    ProviderPack {
+        id: "aws",
+        fofa_queries: &[
+            "body=\"AKIA\" && body=\"AWS_SECRET_ACCESS_KEY\"",
+            "body=\"aws_access_key_id\" && body=\"AKIA\"",
+        ],
+        shodan_queries: &[
+            "http.html:AKIA http.html:AWS_SECRET_ACCESS_KEY",
+            "http.html:aws_access_key_id http.html:AKIA",
+        ],
+        github_terms: &[
+            "AKIA AWS_SECRET_ACCESS_KEY",
+            "aws_access_key_id AKIA",
+        ],
+    },
+    ProviderPack {
+        id: "github_token",
+        fofa_queries: &["body=\"ghp_\"", "body=\"github_pat_\""],
+        shodan_queries: &["http.html:ghp_", "http.html:github_pat_"],
+        github_terms: &["ghp_ filename:.env", "\"GITHUB_TOKEN\" ghp_"],
+    },
+    ProviderPack {
+        id: "gitlab_token",
+        fofa_queries: &["body=\"glpat-\""],
+        shodan_queries: &["http.html:glpat-"],
+        github_terms: &["glpat- filename:.env", "\"GITLAB_TOKEN\" glpat-"],
+    },
+    ProviderPack {
+        id: "stripe",
+        fofa_queries: &["body=\"sk_live_\""],
+        shodan_queries: &["http.html:sk_live_"],
+        github_terms: &["sk_live_ filename:.env", "STRIPE_SECRET_KEY sk_live_"],
+    },
+    ProviderPack {
+        id: "slack",
+        fofa_queries: &["body=\"xoxb-\"", "body=\"xoxp-\""],
+        shodan_queries: &["http.html:xoxb-", "http.html:xoxp-"],
+        github_terms: &["xoxb- filename:.env", "SLACK_BOT_TOKEN xoxb-"],
+    },
+    ProviderPack {
+        id: "twilio",
+        fofa_queries: &["body=\"TWILIO_AUTH_TOKEN\""],
+        shodan_queries: &["http.html:TWILIO_AUTH_TOKEN"],
+        github_terms: &["TWILIO_AUTH_TOKEN"],
+    },
+    ProviderPack {
+        id: "grafana",
+        fofa_queries: &["body=\"GF_SECURITY_ADMIN_PASSWORD\""],
+        shodan_queries: &["http.html:GF_SECURITY_ADMIN_PASSWORD"],
+        github_terms: &["GF_SECURITY_ADMIN_PASSWORD"],
+    },
+    ProviderPack {
+        id: "jenkins",
+        fofa_queries: &["body=\"JENKINS_PASSWORD\""],
+        shodan_queries: &["http.html:JENKINS_PASSWORD"],
+        github_terms: &["JENKINS_PASSWORD"],
+    },
+    ProviderPack {
+        id: "nacos",
+        fofa_queries: &["body=\"NACOS_AUTH_TOKEN\""],
+        shodan_queries: &["http.html:NACOS_AUTH_TOKEN"],
+        github_terms: &["NACOS_AUTH_TOKEN"],
+    },
+    ProviderPack {
+        id: "minio",
+        fofa_queries: &["body=\"MINIO_ROOT_PASSWORD\""],
+        shodan_queries: &["http.html:MINIO_ROOT_PASSWORD"],
+        github_terms: &["MINIO_ROOT_PASSWORD"],
+    },
+    ProviderPack {
+        id: "actuator",
+        fofa_queries: &["body=\"/actuator/env\"", "body=\"/actuator/health\""],
+        shodan_queries: &["http.html:/actuator/env"],
+        github_terms: &["actuator/env filename:.env", "spring actuator env"],
+    },
+    ProviderPack {
+        id: "elasticsearch",
+        fofa_queries: &["body=\"elasticsearch\" && body=\"cluster_name\""],
+        shodan_queries: &["http.html:elasticsearch http.html:cluster_name"],
+        github_terms: &["ELASTICSEARCH_PASSWORD", "elasticsearch.yml password"],
+    },
 ];
 pub fn registry() -> BTreeMap<&'static str, &'static ProviderPack> {
     PACKS.iter().map(|pack| (pack.id, pack)).collect()
@@ -302,6 +383,18 @@ mod tests {
             "openrouter",
             "volcengine",
             "vllm",
+            "aws",
+            "github_token",
+            "gitlab_token",
+            "stripe",
+            "slack",
+            "twilio",
+            "grafana",
+            "jenkins",
+            "nacos",
+            "minio",
+            "actuator",
+            "elasticsearch",
         ] {
             let pack = registry()[id];
             assert!(!pack.fofa_queries.is_empty(), "{id} FOFA queries");
