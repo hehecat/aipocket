@@ -135,8 +135,16 @@ impl Scanner {
             std::collections::BTreeMap::<(String, String), aipocket_db::QueryMetricRecord>::new();
         // FOFA/Shodan first: do not block primary discovery behind pending GitHub blob
         // drains (slow/403 tokens previously left the UI stuck in discovery with 0 hits).
+        let mut early_probed: Vec<Credential> = Vec::new();
         if hits.is_empty() {
-            for source in sources {
+            // Early verification needs the dedup store and honeypot groups
+            // while sources are still fetching.
+            let dedup = DedupStore::connect(&self.settings).await;
+            let known_honeypot_groups = self.repository.known_honeypot_groups().await?;
+            // Plan all sources first (cheap DB round-trips), then fetch them
+            // concurrently so a slow shard never blocks FOFA/Shodan.
+            let mut plans: Vec<(&'static str, SourceBudgets)> = Vec::new();
+            for source in &sources {
                 if cancel.is_cancelled() {
                     return self.interrupt(&run_id, progress, lease, &events).await;
                 }
@@ -191,7 +199,7 @@ impl Scanner {
                         .send(ScanEvent::Log(discovery_progress_line(&update)))
                         .ok();
                 });
-                let source_budgets = SourceBudgets {
+                let budgets_for_fetch = SourceBudgets {
                     selected_queries: Some(selected_queries),
                     checkpoints,
                     progress: Some(progress_reporter),
@@ -201,18 +209,34 @@ impl Scanner {
                     .send(ScanEvent::Log(format!(
                         "发现 · 开始 {} · 计划查询 {} 条",
                         source.name(),
-                        source_budgets
+                        budgets_for_fetch
                             .selected_queries
                             .as_ref()
                             .map_or(query_ids.len(), Vec::len)
                     )))
                     .ok();
-                let fetched = tokio::select! {
-                    _ = cancel.cancelled() => {
-                        return self.interrupt(&run_id, progress, lease, &events).await;
-                    }
-                    fetched = source.fetch(&source_budgets, mode.clone()) => fetched,
-                };
+                plans.push((source.name(), budgets_for_fetch));
+            }
+            let mut fetchers = tokio::task::JoinSet::new();
+            for (index, source) in sources.iter().enumerate() {
+                let source = source.clone();
+                let budgets = plans[index].1.clone();
+                let mode = mode.clone();
+                let cancel = cancel.clone();
+                fetchers.spawn(async move {
+                    let fetched = tokio::select! {
+                        _ = cancel.cancelled() => Err(anyhow::anyhow!("discovery cancelled")),
+                        fetched = source.fetch(&budgets, mode) => fetched,
+                    };
+                    (index, fetched)
+                });
+            }
+            while let Some(joined) = fetchers.join_next().await {
+                if cancel.is_cancelled() {
+                    return self.interrupt(&run_id, progress, lease, &events).await;
+                }
+                let (index, fetched) = joined.map_err(|err| anyhow::anyhow!("{err}"))?;
+                let source_name = plans[index].0;
                 match fetched {
                     Ok(mut fetched) => {
                         progress.raw_hits += fetched
@@ -279,13 +303,53 @@ impl Scanner {
                             aipocket_db::advance_checkpoints_with_work(pool, &checkpoints, &work)
                                 .await?;
                         }
+                        // Verify this source's fresh hits immediately while the
+                        // remaining sources are still fetching (search/verify overlap).
+                        let mut fresh = Vec::new();
+                        for hit in &fetched.host_hits {
+                            let target = hit
+                                .get("host")
+                                .or_else(|| hit.get("url"))
+                                .and_then(Value::as_str)
+                                .unwrap_or_default();
+                            let group = aipocket_core::url_sanitize::honeypot_group_key(target).ok();
+                            if group
+                                .as_ref()
+                                .is_some_and(|group| known_honeypot_groups.contains(group))
+                            {
+                                continue;
+                            }
+                            if !policy.use_cross_run_dedup
+                                || target.is_empty()
+                                || !dedup.target_seen("probe", target).await
+                            {
+                                fresh.push(hit.clone());
+                            }
+                        }
+                        if !fresh.is_empty() {
+                            let early = self.probe_hits(&fresh, &events).await;
+                            let mut early_extracted = extract_credentials(&fresh);
+                            for hit in &fresh {
+                                if let Some(target) = hit
+                                    .get("host")
+                                    .or_else(|| hit.get("url"))
+                                    .and_then(Value::as_str)
+                                    && !target.is_empty()
+                                {
+                                    dedup.mark_host(target).await;
+                                    dedup.mark_target("probe", target).await;
+                                }
+                            }
+                            early_probed.append(&mut early_extracted);
+                            early_probed.extend(early);
+                        }
                         hits.append(&mut fetched.host_hits);
                         credentials_from_observations(&mut hits, fetched.credential_observations);
                         for error in fetched.errors {
                             events
                                 .send(ScanEvent::Log(format!(
                                     "发现 · {} · 警告 · {error}",
-                                    source.name()
+                                    source_name
                                 )))
                                 .ok();
                         }
@@ -293,7 +357,7 @@ impl Scanner {
                         events
                             .send(ScanEvent::Log(format!(
                                 "发现 · 完成 {} · 累计原始命中 {}",
-                                source.name(),
+                                source_name,
                                 progress.raw_hits
                             )))
                             .ok();
@@ -302,7 +366,7 @@ impl Scanner {
                         events
                             .send(ScanEvent::Log(format!(
                                 "发现 · {} · 失败 · {error}",
-                                source.name()
+                                source_name
                             )))
                             .ok();
                     }
@@ -412,6 +476,7 @@ impl Scanner {
         } else {
             let mut extracted = extract_credentials(&hits);
             extracted.append(&mut probed);
+            extracted.append(&mut early_probed);
             extracted
         };
         let run_dir = self
