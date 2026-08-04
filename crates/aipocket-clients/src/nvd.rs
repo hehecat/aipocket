@@ -24,15 +24,20 @@ impl NvdClient {
         }
     }
 
-    /// Search CVEs by keyword, restricted to entries published since
-    /// `since` (RFC 3339). `limit` caps resultsPerPage (max 2000).
+    /// Search CVEs by keyword, restricted to entries modified in the
+    /// window `[since, now]` (RFC 3339 Z format). `limit` caps
+    /// resultsPerPage (max 2000).
     pub async fn search(&self, keyword: &str, since: &str, limit: u32) -> Result<Value> {
+        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
         let response = self
             .http
             .get(format!("{}/rest/json/cves/2.0", self.base_url))
             .query(&[
                 ("keywordSearch", keyword.to_string()),
-                ("pubStartDate", since.to_string()),
+                // services.nvd.nist.gov rejects pubStartDate (404 on the
+                // migrated endpoint); only lastMod* date windows work.
+                ("lastModStartDate", since.to_string()),
+                ("lastModEndDate", now),
                 ("resultsPerPage", limit.to_string()),
             ])
             .timeout(DEFAULT_TIMEOUT)
