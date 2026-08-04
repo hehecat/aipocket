@@ -1,7 +1,11 @@
 # syntax=docker/dockerfile:1
 FROM rust:1-bookworm AS builder
 WORKDIR /build
-COPY Cargo.toml Cargo.lock rust-toolchain.toml ./
+# Install pinned toolchain in its own layer (only invalidates when
+# rust-toolchain.toml changes), so code changes don't re-download rustup.
+COPY rust-toolchain.toml ./
+RUN rustup toolchain install && rustup default stable
+COPY Cargo.toml Cargo.lock ./
 COPY crates ./crates
 COPY migrations ./migrations
 ENV CARGO_TERM_COLOR=always \
