@@ -1,5 +1,5 @@
 use crate::{DiscoveryProgress, DiscoverySource, QueryUsage, SourceBudgets, SourceFetchResult};
-use aipocket_clients::{FofaClient, GithubClient, ShodanClient};
+use aipocket_clients::{FofaClient, GithubClient, MaskGraphClient, ShodanClient};
 use aipocket_core::ScanMode;
 use anyhow::Result;
 use async_trait::async_trait;
@@ -373,6 +373,121 @@ impl DiscoverySource for ShodanSource {
                     Err(error) => {
                         result.errors.push(error.to_string());
                         report_progress(budgets, "shodan", query_index, query_total, page, &result);
+                        break;
+                    }
+                }
+                if self.page_delay > 0.0 {
+                    tokio::time::sleep(std::time::Duration::from_secs_f64(self.page_delay)).await;
+                }
+            }
+        }
+        result.host_hit_count = Some(result.host_hits.len() as u64);
+        Ok(result)
+    }
+}
+
+/// Map one MaskGraph `items[]` row into the extractor dict shape.
+///
+/// MaskGraph rows look like:
+/// `{"keyno", "website": "www.example.com", "title", "addr": "1.2.3.4:443",
+///  "region": {"country", "province", "city", "district"}, "update"}`
+pub fn normalize_maskgraph_item(row: &Value) -> Value {
+    let website = first_string(row.get("website"));
+    let addr = first_string(row.get("addr"));
+    let (ip, port) = match addr.rsplit_once(':') {
+        Some((host, port)) if !host.is_empty() => (host.to_string(), port.to_string()),
+        _ => (addr.clone(), String::new()),
+    };
+    let mut host = website.clone();
+    if host.is_empty() {
+        host = ip.clone();
+    }
+    if !host.is_empty() && !matches!(port.as_str(), "" | "80" | "443") && !host.contains(':') {
+        host = format!("{host}:{port}");
+    }
+    let title = first_string(row.get("title"));
+    json!({
+        "host": host,
+        "ip_str": ip,
+        "port": port,
+        "hostnames": [],
+        "title": title,
+        "data": title,
+        "html": "",
+        "location": {
+            "country_name": first_string(row.pointer("/region/country")),
+            "city": first_string(row.pointer("/region/city")),
+        },
+        "maskgraph": {
+            "keyno": first_string(row.get("keyno")),
+            "update": first_string(row.get("update")),
+        },
+    })
+}
+
+pub struct MaskGraphSource {
+    pub client: MaskGraphClient,
+    pub queries: Vec<String>,
+    pub max_pages: u32,
+    pub page_delay: f64,
+}
+#[async_trait]
+impl DiscoverySource for MaskGraphSource {
+    fn name(&self) -> &'static str {
+        "maskgraph"
+    }
+    fn query_ids(&self) -> Vec<String> {
+        self.queries.clone()
+    }
+    fn is_configured(&self) -> bool {
+        !self.queries.is_empty()
+    }
+    async fn fetch(&self, budgets: &SourceBudgets, _mode: ScanMode) -> Result<SourceFetchResult> {
+        let selected = budgets.selected_queries.as_ref();
+        let queries = self
+            .queries
+            .iter()
+            .filter(|query| selected.is_none_or(|values| values.contains(query)))
+            .collect::<Vec<_>>();
+        let limit = budgets.shodan.unwrap_or(queries.len());
+        let mut result = SourceFetchResult {
+            source: "maskgraph".into(),
+            ..Default::default()
+        };
+        let query_total = queries.len().min(limit);
+        for (query_offset, query) in queries.into_iter().take(limit).enumerate() {
+            let query_index = query_offset + 1;
+            report_progress(budgets, "maskgraph", query_index, query_total, 0, &result);
+            for page in 1..=self.max_pages.max(1) {
+                match self.client.search(&aipocket_clients::maskgraph::plain_query(query), page).await {
+                    Ok(value) => {
+                        let data = value.get("data").cloned().unwrap_or_else(|| json!({}));
+                        let rows = data
+                            .get("items")
+                            .and_then(Value::as_array)
+                            .cloned()
+                            .unwrap_or_default();
+                        let more = data.get("more").and_then(Value::as_bool).unwrap_or(false);
+                        let count = rows.len();
+                        result.host_hits.extend(rows.iter().map(|row| {
+                            tag_hit(normalize_maskgraph_item(row), "maskgraph", query)
+                        }));
+                        result.query_usage.push(QueryUsage {
+                            source: "maskgraph".into(),
+                            query: query.clone(),
+                            page_count: 1,
+                            result_count: count as u64,
+                            query_id: query.clone(),
+                            ..Default::default()
+                        });
+                        report_progress(budgets, "maskgraph", query_index, query_total, page, &result);
+                        if !more {
+                            break;
+                        }
+                    }
+                    Err(error) => {
+                        result.errors.push(error.to_string());
+                        report_progress(budgets, "maskgraph", query_index, query_total, page, &result);
                         break;
                     }
                 }

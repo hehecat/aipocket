@@ -254,7 +254,7 @@ async fn run_scan(
     );
     fofa_queries.sort();
     fofa_queries.dedup();
-    let shodan_queries = registry
+    let shodan_queries: Vec<String> = registry
         .values()
         .flat_map(|p| p.shodan_queries)
         .map(|q| q.to_string())
@@ -271,9 +271,20 @@ async fn run_scan(
     if source == "all" || source == "shodan" {
         sources.push(Arc::new(aipocket_discovery::sources::ShodanSource {
             client: aipocket_clients::ShodanClient::new(http.clone(), &settings),
-            queries: shodan_queries,
+            queries: shodan_queries.clone(),
             max_pages: settings.shodan_max_pages,
             page_delay: settings.shodan_page_delay,
+        }));
+    }
+    if (source == "all" || source == "maskgraph") && !settings.maskgraph_key.is_empty() {
+        sources.push(Arc::new(aipocket_discovery::sources::MaskGraphSource {
+            client: aipocket_clients::MaskGraphClient::new(
+                http.clone(),
+                Some(settings.maskgraph_key.clone()),
+            ),
+            queries: shodan_queries,
+            max_pages: settings.maskgraph_max_pages,
+            page_delay: settings.maskgraph_page_delay,
         }));
     }
     if (source == "all" || source == "github")
