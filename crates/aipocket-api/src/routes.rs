@@ -297,60 +297,151 @@ async fn cve_sync(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, Api
     let settings = s.settings.read().await;
     let use_tavily = !settings.tavily_key.trim().is_empty();
     let use_maskgraph = !settings.maskgraph_key.trim().is_empty();
+    let since = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
     drop(settings);
-    if !use_tavily && !use_maskgraph {
-        return Err(ApiError::new(
-            StatusCode::BAD_REQUEST,
-            "no_cve_provider",
-            "CVE 同步需要配置 TAVILY_KEY 或 MASKGRAPH_KEY",
-        ));
-    }
-    let source = if use_tavily { "tavily" } else { "maskgraph" };
-    let mut added = 0;
+
+    let mut sources: Vec<&str> = Vec::new();
     let mut discovered = 0;
-    for query in queries {
-        let items: Vec<Value> = if use_tavily {
-            s.tavily()
-                .await
-                .search(query)
-                .await?
-                .get("results")
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-        } else {
-            let value = s.maskgraph().await.search(query, 1).await?;
-            value
-                .get("data")
-                .and_then(|data| data.get("items"))
-                .and_then(Value::as_array)
-                .cloned()
-                .unwrap_or_default()
-                .into_iter()
-                .map(|item| {
-                    json!({
-                        "title": item.get("title"),
-                        "url": item.get("url").or_else(|| item.get("website")),
-                        "content": item.get("content").or_else(|| item.get("description")),
-                    })
-                })
-                .collect()
-        };
-        for item in items {
-            for record in cve_records_from_search_item(&item, source) {
+    let mut added = 0;
+
+    // 1) NVD — free & anonymous, always runs as the base source.
+    match s
+        .nvd()
+        .await
+        .search(
+            "Dify OR LiteLLM OR Flowise OR Langflow OR OpenWebUI OR FastGPT OR vLLM OR MLflow OR AutoGen OR RAGFlow",
+            &since,
+            100,
+        )
+        .await
+    {
+        Ok(value) => {
+            sources.push("nvd");
+            for record in cve_records_from_nvd(&value) {
                 discovered += 1;
                 if s.repository.upsert_cve(&record).await? {
                     added += 1;
                 }
             }
         }
+        Err(err) => eprintln!("cve_sync: NVD failed: {err:#}"),
+    }
+
+    // 2) Tavily when configured.
+    if use_tavily {
+        for query in queries {
+            match s.tavily().await.search(query).await {
+                Ok(value) => {
+                    sources.push("tavily");
+                    let items = value
+                        .get("results")
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    for item in items {
+                        for record in cve_records_from_search_item(&item, "tavily") {
+                            discovered += 1;
+                            if s.repository.upsert_cve(&record).await? {
+                                added += 1;
+                            }
+                        }
+                    }
+                }
+                Err(err) => eprintln!("cve_sync: Tavily failed: {err:#}"),
+            }
+        }
+    }
+
+    // 3) MaskGraph when configured (free key may be revoked server-side).
+    if use_maskgraph {
+        for query in queries {
+            match s.maskgraph().await.search(query, 1).await {
+                Ok(value) => {
+                    let items = value
+                        .get("data")
+                        .and_then(|data| data.get("items"))
+                        .and_then(Value::as_array)
+                        .cloned()
+                        .unwrap_or_default();
+                    if items.is_empty() {
+                        continue;
+                    }
+                    sources.push("maskgraph");
+                    for item in items {
+                        let mapped = json!({
+                            "title": item.get("title"),
+                            "url": item.get("url").or_else(|| item.get("website")),
+                            "content": item.get("content").or_else(|| item.get("description")),
+                        });
+                        for record in cve_records_from_search_item(&mapped, "maskgraph") {
+                            discovered += 1;
+                            if s.repository.upsert_cve(&record).await? {
+                                added += 1;
+                            }
+                        }
+                    }
+                }
+                Err(err) => eprintln!("cve_sync: MaskGraph failed: {err:#}"),
+            }
+        }
+    }
+
+    if sources.is_empty() {
+        return Err(ApiError::new(
+            StatusCode::BAD_GATEWAY,
+            "no_cve_provider",
+            "CVE 同步失败：NVD 不可达且未配置 TAVILY_KEY / MASKGRAPH_KEY",
+        ));
     }
     Ok(Json(json!({
         "total": s.repository.cves().await?.len(),
         "discovered": discovered,
         "added": added,
-        "source": source,
+        "sources": sources,
     })))
+}
+
+/// Build CVE records from an NVD API 2.0 response body.
+fn cve_records_from_nvd(value: &Value) -> Vec<Value> {
+    let now = chrono::Utc::now().to_rfc3339();
+    value
+        .get("vulnerabilities")
+        .and_then(Value::as_array)
+        .map(|vulns| {
+            vulns
+                .iter()
+                .filter_map(|v| {
+                    let cve = v.get("cve")?;
+                    let id = cve.get("id").and_then(Value::as_str)?.to_string();
+                    let description = cve
+                        .get("descriptions")
+                        .and_then(Value::as_array)
+                        .and_then(|ds| {
+                            ds.iter()
+                                .find(|d| d.get("lang").and_then(Value::as_str) == Some("en"))
+                                .and_then(|d| d.get("value").and_then(Value::as_str))
+                        })
+                        .unwrap_or("")
+                        .to_string();
+                    let url = cve
+                        .get("references")
+                        .and_then(Value::as_array)
+                        .and_then(|refs| refs.first())
+                        .and_then(|r| r.get("url").and_then(Value::as_str))
+                        .unwrap_or("")
+                        .to_string();
+                    Some(json!({
+                        "id": id,
+                        "title": id,
+                        "description": description,
+                        "source_url": url,
+                        "source": "nvd",
+                        "synced_at": now,
+                    }))
+                })
+                .collect()
+        })
+        .unwrap_or_default()
 }
 
 fn cve_records_from_search_item(item: &Value, source: &str) -> Vec<Value> {
@@ -1464,6 +1555,22 @@ mod scan_query_tests {
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["id"], "CVE-2026-12345");
         assert_eq!(rows[1]["id"], "GHSA-2345-6789-CFGH");
+    }
+
+    #[test]
+    fn nvd_records_are_normalized_before_persistence() {
+        let value = json!({
+            "vulnerabilities": [
+                {"cve": {"id": "CVE-2026-1111", "descriptions": [{"lang": "en", "value": "Dify RCE"}], "references": [{"url": "https://nvd.nist.gov/vuln/detail/CVE-2026-1111"}]}},
+                {"cve": {"id": "CVE-2026-2222", "descriptions": [{"lang": "en", "value": "x"}], "references": []}}
+            ]
+        });
+        let rows = cve_records_from_nvd(&value);
+        assert_eq!(rows.len(), 2);
+        assert_eq!(rows[0]["id"], "CVE-2026-1111");
+        assert_eq!(rows[0]["description"], "Dify RCE");
+        assert_eq!(rows[0]["source"], "nvd");
+        assert_eq!(rows[1]["source_url"], "");
     }
 
     #[test]

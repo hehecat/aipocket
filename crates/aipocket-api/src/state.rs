@@ -1,5 +1,5 @@
 use crate::scan_manager::ScanManager;
-use aipocket_clients::{FofaClient, GithubClient, MaskGraphClient, ShodanClient, TavilyClient};
+use aipocket_clients::{FofaClient, GithubClient, MaskGraphClient, NvdClient, ShodanClient, TavilyClient};
 use aipocket_core::Settings;
 use aipocket_db::Repository;
 use aipocket_services::{BalanceService, Scanner};
@@ -80,5 +80,8 @@ impl AppState {
         let key = (!settings.maskgraph_key.trim().is_empty())
             .then(|| settings.maskgraph_key.trim().to_owned());
         MaskGraphClient::new(self.http.clone(), key)
+    }
+    pub async fn nvd(&self) -> NvdClient {
+        NvdClient::new(self.http.clone())
     }
 }
