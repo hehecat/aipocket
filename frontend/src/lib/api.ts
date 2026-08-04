@@ -206,6 +206,7 @@ export interface SettingsView {
   github_tokens: string
   github_api_base_url: string
   github_hunter_enabled: boolean
+  maskgraph_key: string
   validate_concurrency: number
   prober_concurrency: number
 }
@@ -247,6 +248,12 @@ export interface GithubCheckResponse {
   search_remaining: number | null
   code_search_remaining: number | null
   n_tokens: number
+}
+
+export interface MaskgraphCheckResponse {
+  status: "ok" | "invalid" | "disabled"
+  message: string
+  consumes_quota: boolean
 }
 
 /** Credential sub-object of a scan result record (models.py Credential). */
@@ -782,6 +789,8 @@ export const api = {
   checkFofa: () => request<FofaCheckResponse>("/settings/check/fofa", { method: "POST" }),
   checkShodan: () => request<ShodanCheckResponse>("/settings/check/shodan", { method: "POST" }),
   checkGithub: () => request<GithubCheckResponse>("/settings/check/github", { method: "POST" }),
+  checkMaskgraph: () =>
+    request<MaskgraphCheckResponse>("/settings/check/maskgraph", { method: "POST" }),
 
   // System
   systemRestart: () => request<{ restarting: boolean }>("/system/restart", { method: "POST" }),

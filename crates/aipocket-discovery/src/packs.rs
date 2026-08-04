@@ -282,10 +282,7 @@ pub const PACKS: &[ProviderPack] = &[
             "http.html:AKIA http.html:AWS_SECRET_ACCESS_KEY",
             "http.html:aws_access_key_id http.html:AKIA",
         ],
-        github_terms: &[
-            "AKIA AWS_SECRET_ACCESS_KEY",
-            "aws_access_key_id AKIA",
-        ],
+        github_terms: &["AKIA AWS_SECRET_ACCESS_KEY", "aws_access_key_id AKIA"],
     },
     ProviderPack {
         id: "github_token",

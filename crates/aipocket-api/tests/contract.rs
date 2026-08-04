@@ -297,6 +297,53 @@ async fn active_run_log_endpoint_serves_the_in_memory_transcript() {
 }
 
 #[tokio::test]
+async fn historical_run_log_endpoint_reads_the_disk_fallback_without_blocking_read() {
+    let root = std::env::temp_dir().join(format!("aipocket-run-log-{}", uuid::Uuid::new_v4()));
+    let run_id = "run_historical_log";
+    let run_dir = root.join(run_id);
+    std::fs::create_dir_all(&run_dir).unwrap();
+    std::fs::write(run_dir.join("run.log"), "历史扫描日志\nfixture").unwrap();
+    let settings = Settings {
+        web_password: "test-password".into(),
+        web_jwt_secret: "test-secret-that-is-long-enough".into(),
+        results_dir: root.to_string_lossy().into_owned(),
+        ..Settings::default()
+    };
+    let state = AppState::new(settings, Repository::default())
+        .await
+        .unwrap();
+    let app = create_app(state).await;
+    let login = app
+        .clone()
+        .oneshot(
+            Request::post("/api/auth/login")
+                .header("content-type", "application/json")
+                .body(Body::from(r#"{"password":"test-password"}"#))
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    let login: Value =
+        serde_json::from_slice(&login.into_body().collect().await.unwrap().to_bytes()).unwrap();
+    let response = app
+        .oneshot(
+            Request::get(format!("/api/runs/{run_id}/log"))
+                .header(
+                    header::AUTHORIZATION,
+                    format!("Bearer {}", login["token"].as_str().unwrap()),
+                )
+                .body(Body::empty())
+                .unwrap(),
+        )
+        .await
+        .unwrap();
+    assert_eq!(response.status(), StatusCode::OK);
+    let body = response.into_body().collect().await.unwrap().to_bytes();
+    assert_eq!(String::from_utf8_lossy(&body), "历史扫描日志\nfixture");
+    std::fs::remove_dir_all(root).unwrap();
+}
+
+#[tokio::test]
 async fn app_serves_static_fallback_and_specific_cors_origins() {
     let root = std::env::temp_dir().join(format!("aipocket-static-{}", uuid::Uuid::new_v4()));
     std::fs::create_dir_all(&root).unwrap();

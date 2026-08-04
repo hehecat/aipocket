@@ -86,6 +86,7 @@ pub fn router() -> Router<AppState> {
         .route("/api/settings/check/fofa", post(check_fofa))
         .route("/api/settings/check/shodan", post(check_shodan))
         .route("/api/settings/check/github", post(check_github))
+        .route("/api/settings/check/maskgraph", post(check_maskgraph))
         .route("/api/scan/start", post(scan_start))
         .route("/api/scan/stop", post(scan_stop))
         .route("/api/scan/status", get(scan_status))
@@ -415,21 +416,17 @@ async fn run_log(
             );
         }
     }
-    let log = s
-        .repository
-        .run_log(&id)
-        .await?
-        .or_else(|| {
-            std::fs::read_to_string(
-                s.settings
-                    .blocking_read()
-                    .results_path()
-                    .join(&id)
-                    .join("run.log"),
-            )
+    let disk_log_path = {
+        let settings = s.settings.read().await;
+        settings.results_path().join(&id).join("run.log")
+    };
+    let log = match s.repository.run_log(&id).await? {
+        Some(log) => log,
+        None => tokio::fs::read_to_string(disk_log_path)
+            .await
             .ok()
-        })
-        .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "no log for run"))?;
+            .ok_or_else(|| ApiError::new(StatusCode::NOT_FOUND, "not_found", "no log for run"))?,
+    };
     Ok(([(header::CONTENT_TYPE, "text/plain; charset=utf-8")], log).into_response())
 }
 async fn high_value(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
@@ -1282,6 +1279,29 @@ async fn check_shodan(_: Auth, State(s): State<AppState>) -> Result<Json<Value>,
         json!({"keys":keys,"total_query_credits":total,"n_keys":results.len(),"n_dead":dead,"consumes_quota":false}),
     ))
 }
+async fn check_maskgraph(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
+    let configured = !s.settings.read().await.maskgraph_key.trim().is_empty();
+    if !configured {
+        return Ok(Json(json!({
+            "status": "disabled",
+            "message": "MASKGRAPH_KEY 未配置",
+            "consumes_quota": false
+        })));
+    }
+    match s.maskgraph().await.search("sk-", 1).await {
+        Ok(_) => Ok(Json(json!({
+            "status": "ok",
+            "message": "MaskGraph API key 可用",
+            "consumes_quota": true
+        }))),
+        Err(error) => Ok(Json(json!({
+            "status": "invalid",
+            "message": error.to_string(),
+            "consumes_quota": true
+        }))),
+    }
+}
+
 async fn check_github(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, ApiError> {
     authorize_network(&s, NetworkCapability::ProviderDiscovery).await?;
     let n = s.settings.read().await.github_token_list().len();

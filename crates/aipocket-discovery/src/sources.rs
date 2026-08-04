@@ -459,7 +459,11 @@ impl DiscoverySource for MaskGraphSource {
             let query_index = query_offset + 1;
             report_progress(budgets, "maskgraph", query_index, query_total, 0, &result);
             for page in 1..=self.max_pages.max(1) {
-                match self.client.search(&aipocket_clients::maskgraph::plain_query(query), page).await {
+                match self
+                    .client
+                    .search(&aipocket_clients::maskgraph::plain_query(query), page)
+                    .await
+                {
                     Ok(value) => {
                         let data = value.get("data").cloned().unwrap_or_else(|| json!({}));
                         let rows = data
@@ -469,9 +473,11 @@ impl DiscoverySource for MaskGraphSource {
                             .unwrap_or_default();
                         let more = data.get("more").and_then(Value::as_bool).unwrap_or(false);
                         let count = rows.len();
-                        result.host_hits.extend(rows.iter().map(|row| {
-                            tag_hit(normalize_maskgraph_item(row), "maskgraph", query)
-                        }));
+                        result.host_hits.extend(
+                            rows.iter().map(|row| {
+                                tag_hit(normalize_maskgraph_item(row), "maskgraph", query)
+                            }),
+                        );
                         result.query_usage.push(QueryUsage {
                             source: "maskgraph".into(),
                             query: query.clone(),
@@ -480,14 +486,28 @@ impl DiscoverySource for MaskGraphSource {
                             query_id: query.clone(),
                             ..Default::default()
                         });
-                        report_progress(budgets, "maskgraph", query_index, query_total, page, &result);
+                        report_progress(
+                            budgets,
+                            "maskgraph",
+                            query_index,
+                            query_total,
+                            page,
+                            &result,
+                        );
                         if !more {
                             break;
                         }
                     }
                     Err(error) => {
                         result.errors.push(error.to_string());
-                        report_progress(budgets, "maskgraph", query_index, query_total, page, &result);
+                        report_progress(
+                            budgets,
+                            "maskgraph",
+                            query_index,
+                            query_total,
+                            page,
+                            &result,
+                        );
                         break;
                     }
                 }

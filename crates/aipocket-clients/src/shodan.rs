@@ -93,7 +93,11 @@ impl ShodanClient {
                             .execute_json("shodan", &self.retry, |key| {
                                 self.http
                                     .get(format!("{}/shodan/host/search", self.base_url))
-                                    .query(&[("key", key), ("query", &simple), ("page", page.as_str())])
+                                    .query(&[
+                                        ("key", key),
+                                        ("query", &simple),
+                                        ("page", page.as_str()),
+                                    ])
                             })
                             .await;
                     }

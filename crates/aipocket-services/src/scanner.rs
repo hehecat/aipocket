@@ -312,7 +312,8 @@ impl Scanner {
                                 .or_else(|| hit.get("url"))
                                 .and_then(Value::as_str)
                                 .unwrap_or_default();
-                            let group = aipocket_core::url_sanitize::honeypot_group_key(target).ok();
+                            let group =
+                                aipocket_core::url_sanitize::honeypot_group_key(target).ok();
                             if group
                                 .as_ref()
                                 .is_some_and(|group| known_honeypot_groups.contains(group))
@@ -357,8 +358,7 @@ impl Scanner {
                         events
                             .send(ScanEvent::Log(format!(
                                 "发现 · 完成 {} · 累计原始命中 {}",
-                                source_name,
-                                progress.raw_hits
+                                source_name, progress.raw_hits
                             )))
                             .ok();
                     }
@@ -833,10 +833,7 @@ impl Scanner {
                         },
                         intrusive_checks: settings.intrusive_checks,
                         allowed_classes: {
-                            let raw = settings
-                                .probe_vuln_classes
-                                .trim()
-                                .to_ascii_lowercase();
+                            let raw = settings.probe_vuln_classes.trim().to_ascii_lowercase();
                             if raw.is_empty() || matches!(raw.as_str(), "*" | "all") {
                                 vec!["*".into()]
                             } else {
@@ -854,7 +851,9 @@ impl Scanner {
                         .find(|prober| prober.product() == hint)
                     {
                         if let Ok(rows) = prober.probe(&http, &context).await {
-                            found.extend(rows.iter().flat_map(|finding| finding.credentials.clone()));
+                            found.extend(
+                                rows.iter().flat_map(|finding| finding.credentials.clone()),
+                            );
                             findings.extend(rows);
                         }
                     }
@@ -863,7 +862,9 @@ impl Scanner {
                             continue;
                         }
                         if let Ok(rows) = prober.probe(&http, &context).await {
-                            found.extend(rows.iter().flat_map(|finding| finding.credentials.clone()));
+                            found.extend(
+                                rows.iter().flat_map(|finding| finding.credentials.clone()),
+                            );
                             findings.extend(rows);
                         }
                     }

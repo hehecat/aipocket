@@ -14,7 +14,7 @@ import {
   ApiError,
   api,
   type FofaCheckResponse,
-  type GithubCheckResponse,
+  type GithubCheckResponse, type MaskgraphCheckResponse,
   type SettingsUpdate,
   type SettingsView,
   type ShodanCheckResponse,
@@ -32,6 +32,7 @@ type FormState = Pick<
   | "shodan_base_url"
   | "github_tokens"
   | "github_api_base_url"
+  | "maskgraph_key"
 >
 
 const FORM_FIELDS = [
@@ -41,8 +42,14 @@ const FORM_FIELDS = [
   "shodan_base_url",
   "github_tokens",
   "github_api_base_url",
+  "maskgraph_key",
 ] as const
-const SENSITIVE = new Set<keyof FormState>(["fofa_keys", "shodan_keys", "github_tokens"])
+const SENSITIVE = new Set<keyof FormState>([
+  "fofa_keys",
+  "shodan_keys",
+  "github_tokens",
+  "maskgraph_key",
+])
 
 function pickForm(view: SettingsView): FormState {
   return {
@@ -52,6 +59,7 @@ function pickForm(view: SettingsView): FormState {
     shodan_base_url: view.shodan_base_url,
     github_tokens: view.github_tokens,
     github_api_base_url: view.github_api_base_url,
+    maskgraph_key: view.maskgraph_key,
   }
 }
 
@@ -240,6 +248,7 @@ function SettingsForm({ initial }: Readonly<{ initial: SettingsView }>) {
   const fofaCheck = useMutation({ mutationFn: () => api.checkFofa() })
   const shodanCheck = useMutation({ mutationFn: () => api.checkShodan() })
   const githubCheck = useMutation({ mutationFn: () => api.checkGithub() })
+  const maskgraphCheck = useMutation({ mutationFn: () => api.checkMaskgraph() })
 
   const restartMutation = useMutation({
     mutationFn: () => api.systemRestart(),
@@ -430,6 +439,50 @@ function SettingsForm({ initial }: Readonly<{ initial: SettingsView }>) {
               data={githubCheck.data}
               error={githubCheck.error}
             />
+
+            <div className="flex flex-col gap-4 sm:gap-[18px]">
+              <div className="flex items-center gap-2.5">
+                <span className="size-2.5 rounded-full bg-info" />
+                <h2 className="text-base font-semibold text-text-primary">MaskGraph</h2>
+              </div>
+
+              <Field
+                label="MASKGRAPH_KEY"
+                htmlFor="maskgraph-key"
+                hint="账户 API Key · key 查询参数认证（匿名仅支持域名搜索）"
+              >
+                <Input
+                  id="maskgraph-key"
+                  value={form.maskgraph_key}
+                  onChange={setField("maskgraph_key")}
+                  spellCheck={false}
+                  placeholder="4179xxxxxxxxxxxxxxxxxxxx"
+                  className="border-border-primary bg-surface-inset font-mono text-[13px] dark:bg-surface-inset"
+                />
+              </Field>
+
+              <div className="flex items-center gap-3">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => maskgraphCheck.mutate()}
+                  disabled={maskgraphCheck.isPending}
+                  className="border-border-primary bg-surface-overlay text-text-secondary hover:text-text-primary dark:bg-surface-overlay"
+                >
+                  <PlugZap />
+                  检测 key
+                </Button>
+                <span className="font-mono text-[11px] text-text-muted">
+                  消耗 1 次搜索配额 · key 缺失时跳过
+                </span>
+              </div>
+
+              <MaskgraphResult
+                isPending={maskgraphCheck.isPending}
+                data={maskgraphCheck.data}
+                error={maskgraphCheck.error}
+              />
+            </div>
           </section>
         </div>
       </div>
@@ -484,6 +537,53 @@ function GithubResult({
             ? ` · core=${data.core_remaining} search=${data.search_remaining} code=${data.code_search_remaining}`
             : ""}
         </span>
+      </div>
+    </>,
+  )
+}
+
+function MaskgraphResult({
+  isPending,
+  data,
+  error,
+}: Readonly<{
+  isPending: boolean
+  data: MaskgraphCheckResponse | undefined
+  error: unknown
+}>) {
+  if (isPending) {
+    return resultShell(
+      "bg-surface-inset text-text-secondary",
+      <>
+        <Loader2 className="mt-px size-4 shrink-0 animate-spin" />
+        <span className="font-mono text-xs">检测中…</span>
+      </>,
+    )
+  }
+  if (error) {
+    return resultShell(
+      "bg-danger-dim text-danger",
+      <>
+        <CircleX className="mt-px size-4 shrink-0" />
+        <span className="font-mono text-xs">{errorMessage(error)}</span>
+      </>,
+    )
+  }
+  if (!data) return null
+  const ok = data.status === "ok"
+  return resultShell(
+    ok ? "bg-success-dim text-success" : "bg-danger-dim text-danger",
+    <>
+      {ok ? (
+        <CircleCheck className="mt-px size-4 shrink-0" />
+      ) : (
+        <CircleX className="mt-px size-4 shrink-0" />
+      )}
+      <div className="flex flex-col gap-0.5">
+        <span className="font-mono text-[13px] font-semibold">
+          {ok ? "可用" : data.status === "disabled" ? "已禁用" : "不可用"}
+        </span>
+        <span className="font-mono text-[11px] text-text-secondary">{data.message}</span>
       </div>
     </>,
   )

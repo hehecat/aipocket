@@ -1,5 +1,5 @@
 use crate::scan_manager::ScanManager;
-use aipocket_clients::{FofaClient, GithubClient, ShodanClient, TavilyClient};
+use aipocket_clients::{FofaClient, GithubClient, MaskGraphClient, ShodanClient, TavilyClient};
 use aipocket_core::Settings;
 use aipocket_db::Repository;
 use aipocket_services::{BalanceService, Scanner};
@@ -74,5 +74,11 @@ impl AppState {
     pub async fn tavily(&self) -> TavilyClient {
         let settings = self.settings.read().await;
         TavilyClient::new(self.http.clone(), &settings)
+    }
+    pub async fn maskgraph(&self) -> MaskGraphClient {
+        let settings = self.settings.read().await;
+        let key = (!settings.maskgraph_key.trim().is_empty())
+            .then(|| settings.maskgraph_key.trim().to_owned());
+        MaskGraphClient::new(self.http.clone(), key)
     }
 }

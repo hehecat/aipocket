@@ -57,10 +57,7 @@ impl MaskGraphClient {
                 truncate(&text, 240)
             )
         })?;
-        let status = value
-            .get("status")
-            .and_then(Value::as_i64)
-            .unwrap_or(-1);
+        let status = value.get("status").and_then(Value::as_i64).unwrap_or(-1);
         if status != 0 {
             let message = value
                 .get("message")
@@ -120,6 +117,9 @@ mod tests {
             "GEMINI_API_KEY OR GOOGLE_API_KEY"
         );
         assert_eq!(plain_query("sk-"), "sk-");
-        assert_eq!(plain_query(r#"http.html:"api.x.ai" http.html:"xai-""#), "api.x.ai OR xai-");
+        assert_eq!(
+            plain_query(r#"http.html:"api.x.ai" http.html:"xai-""#),
+            "api.x.ai OR xai-"
+        );
     }
 }

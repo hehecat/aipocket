@@ -18,6 +18,9 @@ pub struct SettingsView {
     pub github_tokens: String,
     pub github_api_base_url: String,
     pub github_hunter_enabled: bool,
+    pub maskgraph_key: String,
+    pub maskgraph_max_pages: u32,
+    pub maskgraph_page_delay: f64,
     pub validate_concurrency: usize,
     pub prober_concurrency: usize,
 }
@@ -36,6 +39,9 @@ pub struct SettingsUpdate {
     pub github_tokens: Option<String>,
     pub github_api_base_url: Option<String>,
     pub github_hunter_enabled: Option<bool>,
+    pub maskgraph_key: Option<String>,
+    pub maskgraph_max_pages: Option<u32>,
+    pub maskgraph_page_delay: Option<f64>,
     pub validate_concurrency: Option<usize>,
     pub prober_concurrency: Option<usize>,
 }
@@ -55,6 +61,9 @@ impl SettingsView {
             github_tokens: mask_list(&s.github_tokens),
             github_api_base_url: s.github_api_base_url.clone(),
             github_hunter_enabled: s.github_hunter_enabled,
+            maskgraph_key: mask_apikey(&s.maskgraph_key),
+            maskgraph_max_pages: s.maskgraph_max_pages,
+            maskgraph_page_delay: s.maskgraph_page_delay,
             validate_concurrency: s.validate_concurrency,
             prober_concurrency: s.prober_concurrency,
         }
@@ -92,6 +101,9 @@ impl SettingsUpdate {
         secret!(github_tokens, "GITHUB_TOKENS");
         put!(github_api_base_url, "GITHUB_API_BASE_URL");
         put!(github_hunter_enabled, "GITHUB_HUNTER_ENABLED");
+        secret!(maskgraph_key, "MASKGRAPH_KEY");
+        put!(maskgraph_max_pages, "MASKGRAPH_MAX_PAGES");
+        put!(maskgraph_page_delay, "MASKGRAPH_PAGE_DELAY");
         put!(validate_concurrency, "VALIDATE_CONCURRENCY");
         put!(prober_concurrency, "PROBER_CONCURRENCY");
         out

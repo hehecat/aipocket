@@ -1,6 +1,6 @@
 use std::time::Duration;
 
-use anyhow::{anyhow, Context, Result, bail};
+use anyhow::{Context, Result, anyhow, bail};
 use redis::aio::ConnectionManager;
 use tokio::{task::JoinHandle, time};
 use tracing::warn;
