@@ -294,17 +294,50 @@ async fn cve_sync(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, Api
         "latest AI infrastructure security CVE GHSA Dify LiteLLM Flowise Langflow Open WebUI",
         "latest AI gateway agent framework CVE GHSA MLflow vLLM OpenRouter FastGPT",
     ];
+    let settings = s.settings.read().await;
+    let use_tavily = !settings.tavily_key.trim().is_empty();
+    let use_maskgraph = !settings.maskgraph_key.trim().is_empty();
+    drop(settings);
+    if !use_tavily && !use_maskgraph {
+        return Err(ApiError::new(
+            StatusCode::BAD_REQUEST,
+            "no_cve_provider",
+            "CVE 同步需要配置 TAVILY_KEY 或 MASKGRAPH_KEY",
+        ));
+    }
+    let source = if use_tavily { "tavily" } else { "maskgraph" };
     let mut added = 0;
     let mut discovered = 0;
     for query in queries {
-        let value = s.tavily().await.search(query).await?;
-        for item in value
-            .get("results")
-            .and_then(Value::as_array)
-            .into_iter()
-            .flatten()
-        {
-            for record in cve_records_from_search_item(item) {
+        let items: Vec<Value> = if use_tavily {
+            s.tavily()
+                .await
+                .search(query)
+                .await?
+                .get("results")
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+        } else {
+            let value = s.maskgraph().await.search(query, 1).await?;
+            value
+                .get("data")
+                .and_then(|data| data.get("items"))
+                .and_then(Value::as_array)
+                .cloned()
+                .unwrap_or_default()
+                .into_iter()
+                .map(|item| {
+                    json!({
+                        "title": item.get("title"),
+                        "url": item.get("url").or_else(|| item.get("website")),
+                        "content": item.get("content").or_else(|| item.get("description")),
+                    })
+                })
+                .collect()
+        };
+        for item in items {
+            for record in cve_records_from_search_item(&item, source) {
                 discovered += 1;
                 if s.repository.upsert_cve(&record).await? {
                     added += 1;
@@ -316,10 +349,11 @@ async fn cve_sync(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, Api
         "total": s.repository.cves().await?.len(),
         "discovered": discovered,
         "added": added,
+        "source": source,
     })))
 }
 
-fn cve_records_from_search_item(item: &Value) -> Vec<Value> {
+fn cve_records_from_search_item(item: &Value, source: &str) -> Vec<Value> {
     static ADVISORY_ID: std::sync::LazyLock<regex::Regex> = std::sync::LazyLock::new(|| {
         regex::Regex::new(r"(?i)\b(?:CVE-\d{4}-\d{4,7}|GHSA-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4}-[23456789cfghjmpqrvwx]{4})\b")
             .expect("advisory id regex")
@@ -342,7 +376,7 @@ fn cve_records_from_search_item(item: &Value) -> Vec<Value> {
                 "title": item.get("title"),
                 "description": item.get("content"),
                 "source_url": item.get("url"),
-                "source": "tavily",
+                "source": source,
                 "synced_at": chrono::Utc::now().to_rfc3339(),
             }))
         })
@@ -1426,7 +1460,7 @@ mod scan_query_tests {
             "title":"Dify CVE-2026-12345 and GHSA-2345-6789-cfgh",
             "content":"CVE-2026-12345",
             "url":"https://example.test/advisory"
-        }));
+        }), "tavily");
         assert_eq!(rows.len(), 2);
         assert_eq!(rows[0]["id"], "CVE-2026-12345");
         assert_eq!(rows[1]["id"], "GHSA-2345-6789-CFGH");
