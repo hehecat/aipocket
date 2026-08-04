@@ -10,9 +10,14 @@ pub struct TavilyClient {
 }
 impl TavilyClient {
     pub fn new(http: Client, settings: &Settings) -> Self {
+        let base = if settings.tavily_base_url.trim().is_empty() {
+            "https://api.tavily.com"
+        } else {
+            settings.tavily_base_url.trim_end_matches('/')
+        };
         Self {
             http,
-            base_url: settings.tavily_base_url.trim_end_matches('/').into(),
+            base_url: base.to_string(),
             key: settings.tavily_key.clone(),
         }
     }
