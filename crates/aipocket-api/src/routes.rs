@@ -297,7 +297,10 @@ async fn cve_sync(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, Api
     let settings = s.settings.read().await;
     let use_tavily = !settings.tavily_key.trim().is_empty();
     let use_maskgraph = !settings.maskgraph_key.trim().is_empty();
-    let since = (chrono::Utc::now() - chrono::Duration::days(30)).to_rfc3339();
+    let since = format!(
+        "{}Z",
+        (chrono::Utc::now() - chrono::Duration::days(30)).format("%Y-%m-%dT%H:%M:%S%.3f")
+    );
     drop(settings);
 
     let mut sources: Vec<&str> = Vec::new();
