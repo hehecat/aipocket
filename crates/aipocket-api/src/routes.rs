@@ -1511,6 +1511,21 @@ async fn scan_start(
                 },
             ));
         }
+        if sources.iter().any(|v| v == "all" || v == "maskgraph")
+            && !settings.maskgraph_key.is_empty()
+        {
+            discovery.push(std::sync::Arc::new(
+                aipocket_discovery::sources::MaskGraphSource {
+                    client: aipocket_clients::MaskGraphClient::new(
+                        http.clone(),
+                        Some(settings.maskgraph_key.clone()),
+                    ),
+                    queries: shodan_queries.clone(),
+                    max_pages: settings.maskgraph_max_pages,
+                    page_delay: settings.maskgraph_page_delay,
+                },
+            ));
+        }
         if sources.iter().any(|v| v == "all" || v == "shodan") {
             discovery.push(std::sync::Arc::new(
                 aipocket_discovery::sources::ShodanSource {

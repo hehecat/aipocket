@@ -1,7 +1,7 @@
 import type { ScanSource, ScanSourceItem } from "@/lib/api"
 
 /** Multi-select sources on the main scan page (manual has a dedicated page). */
-export const ALL_SCAN_SOURCES: readonly ScanSourceItem[] = ["fofa", "shodan", "github"]
+export const ALL_SCAN_SOURCES: readonly ScanSourceItem[] = ["fofa", "shodan", "github", "maskgraph"]
 
 /** Dedicated opt-in lanes not included in "all". */
 export const DEDICATED_SCAN_SOURCES: readonly ScanSourceItem[] = ["manual"]

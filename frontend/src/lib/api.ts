@@ -4,7 +4,7 @@ import { clearToken, getToken } from "@/lib/auth-storage"
 /* Types — mirror src/aipocket/web/schemas.py and models.py            */
 /* ------------------------------------------------------------------ */
 
-export type ScanSourceItem = "fofa" | "shodan" | "github" | "manual"
+export type ScanSourceItem = "fofa" | "shodan" | "github" | "maskgraph" | "manual"
 export type ScanSource = ScanSourceItem | "all"
 export type ScanMode = "full" | "incremental"
 /** Hostname reverse-lookup engines for source=manual (custom hunt). */

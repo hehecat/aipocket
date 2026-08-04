@@ -4,6 +4,7 @@ import {
   Check,
   ChevronDown,
   CircleCheck,
+  Fingerprint,
   Gem,
   GitBranch,
   Globe,
@@ -50,6 +51,7 @@ const SOURCE_ITEMS: { value: ScanSourceItem; label: string; icon: typeof Globe }
   { value: "fofa", label: "FOFA", icon: Globe },
   { value: "shodan", label: "Shodan", icon: Radar },
   { value: "github", label: "GitHub", icon: GitBranch },
+  { value: "maskgraph", label: "MaskGraph", icon: Fingerprint },
 ]
 
 
