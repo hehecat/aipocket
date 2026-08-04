@@ -308,26 +308,31 @@ async fn cve_sync(_: Auth, State(s): State<AppState>) -> Result<Json<Value>, Api
     let mut added = 0;
 
     // 1) NVD — free & anonymous, always runs as the base source.
-    match s
-        .nvd()
-        .await
-        .search(
-            "Dify OR LiteLLM OR Flowise OR Langflow OR OpenWebUI OR FastGPT OR vLLM OR MLflow OR AutoGen OR RAGFlow",
-            &since,
-            100,
-        )
-        .await
-    {
-        Ok(value) => {
-            sources.push("nvd");
-            for record in cve_records_from_nvd(&value) {
-                discovered += 1;
-                if s.repository.upsert_cve(&record).await? {
-                    added += 1;
+    // The migrated API treats keywordSearch literally (no OR/AND
+    // operators), so query each keyword separately and merge.
+    const NVD_KEYWORDS: [&str; 10] = [
+        "Dify", "LiteLLM", "Flowise", "Langflow", "OpenWebUI", "FastGPT", "vLLM", "MLflow",
+        "AutoGen", "RAGFlow",
+    ];
+    let mut nvd_ok = false;
+    for keyword in NVD_KEYWORDS {
+        match s.nvd().await.search(keyword, &since, 100).await {
+            Ok(value) => {
+                if !nvd_ok {
+                    sources.push("nvd");
+                    nvd_ok = true;
+                }
+                for record in cve_records_from_nvd(&value) {
+                    discovered += 1;
+                    if s.repository.upsert_cve(&record).await? {
+                        added += 1;
+                    }
                 }
             }
+            Err(err) => eprintln!("cve_sync: NVD failed ({keyword}): {err:#}"),
         }
-        Err(err) => eprintln!("cve_sync: NVD failed: {err:#}"),
+        // Anonymous NVD rate limit: 5 requests / 30s.
+        tokio::time::sleep(Duration::from_secs(7)).await;
     }
 
     // 2) Tavily when configured.
