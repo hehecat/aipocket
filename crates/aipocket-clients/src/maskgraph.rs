@@ -97,6 +97,30 @@ pub fn plain_query(query: &str) -> String {
     terms.join(" OR ")
 }
 
+/// Split a Shodan-style query into its plain single terms (filter prefixes and
+/// quotes stripped, deduplicated, original order preserved).
+///
+/// MaskGraph's engine treats `OR` as literal text and whitespace-separated
+/// terms as AND, so a multi-token query such as `anythingllm OR
+/// OPENAI_API_KEY` matches nothing (verified against the live API: the single
+/// term `anythingllm` returns hits while both OR- and AND-joined forms return
+/// zero). Callers that search MaskGraph must therefore issue each term as its
+/// own query.
+pub fn plain_terms(query: &str) -> Vec<String> {
+    let mut terms = Vec::new();
+    for part in query.split_whitespace() {
+        let term = match part.split_once(':') {
+            Some((prefix, rest)) if is_filter_prefix(prefix) => rest,
+            _ => part,
+        };
+        let term = term.trim_matches('"');
+        if !term.is_empty() && !terms.iter().any(|t| t == term) {
+            terms.push(term.to_string());
+        }
+    }
+    terms
+}
+
 fn is_filter_prefix(prefix: &str) -> bool {
     !prefix.is_empty()
         && prefix
@@ -106,7 +130,7 @@ fn is_filter_prefix(prefix: &str) -> bool {
 
 #[cfg(test)]
 mod tests {
-    use super::plain_query;
+    use super::{plain_query, plain_terms};
 
     #[test]
     fn strips_shodan_filters() {
@@ -121,5 +145,21 @@ mod tests {
             plain_query(r#"http.html:"api.x.ai" http.html:"xai-""#),
             "api.x.ai OR xai-"
         );
+    }
+
+    #[test]
+    fn splits_into_plain_terms() {
+        assert_eq!(
+            plain_terms(r#"http.html:"anythingllm" http.html:"OPENAI_API_KEY""#),
+            vec!["anythingllm", "OPENAI_API_KEY"]
+        );
+        assert_eq!(plain_terms(r#"http.html:"sk-""#), vec!["sk-"]);
+        assert_eq!(plain_terms("sk-"), vec!["sk-"]);
+        // duplicates are dropped, order preserved
+        assert_eq!(
+            plain_terms(r#"http.html:"sk-" http.html:"sk-" http.html:"sk-ant-""#),
+            vec!["sk-", "sk-ant-"]
+        );
+        assert!(plain_terms("http.html:").is_empty());
     }
 }

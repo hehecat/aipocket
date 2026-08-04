@@ -28,7 +28,9 @@ impl NvdClient {
     /// window `[since, now]` (RFC 3339 Z format). `limit` caps
     /// resultsPerPage (max 2000).
     pub async fn search(&self, keyword: &str, since: &str, limit: u32) -> Result<Value> {
-        let now = chrono::Utc::now().format("%Y-%m-%dT%H:%M:%S%.3fZ").to_string();
+        let now = chrono::Utc::now()
+            .format("%Y-%m-%dT%H:%M:%S%.3fZ")
+            .to_string();
         let response = self
             .http
             .get(format!("{}/rest/json/cves/2.0", self.base_url))
