@@ -439,50 +439,50 @@ function SettingsForm({ initial }: Readonly<{ initial: SettingsView }>) {
               data={githubCheck.data}
               error={githubCheck.error}
             />
+          </section>
 
-            <div className="flex flex-col gap-4 sm:gap-[18px]">
-              <div className="flex items-center gap-2.5">
-                <span className="size-2.5 rounded-full bg-info" />
-                <h2 className="text-base font-semibold text-text-primary">MaskGraph</h2>
-              </div>
-
-              <Field
-                label="MASKGRAPH_KEY"
-                htmlFor="maskgraph-key"
-                hint="账户 API Key · key 查询参数认证（匿名仅支持域名搜索）"
-              >
-                <Input
-                  id="maskgraph-key"
-                  value={form.maskgraph_key}
-                  onChange={setField("maskgraph_key")}
-                  spellCheck={false}
-                  placeholder="4179xxxxxxxxxxxxxxxxxxxx"
-                  className="border-border-primary bg-surface-inset font-mono text-[13px] dark:bg-surface-inset"
-                />
-              </Field>
-
-              <div className="flex items-center gap-3">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => maskgraphCheck.mutate()}
-                  disabled={maskgraphCheck.isPending}
-                  className="border-border-primary bg-surface-overlay text-text-secondary hover:text-text-primary dark:bg-surface-overlay"
-                >
-                  <PlugZap />
-                  检测 key
-                </Button>
-                <span className="font-mono text-[11px] text-text-muted">
-                  消耗 1 次搜索配额 · key 缺失时跳过
-                </span>
-              </div>
-
-              <MaskgraphResult
-                isPending={maskgraphCheck.isPending}
-                data={maskgraphCheck.data}
-                error={maskgraphCheck.error}
-              />
+          <section className="flex flex-col gap-4 rounded-md border border-border-primary bg-surface-raised p-4 sm:gap-[18px] sm:p-6">
+            <div className="flex items-center gap-2.5">
+              <span className="size-2.5 rounded-full bg-info" />
+              <h2 className="text-base font-semibold text-text-primary">MaskGraph</h2>
             </div>
+
+            <Field
+              label="MASKGRAPH_KEY"
+              htmlFor="maskgraph-key"
+              hint="账户 API Key · key 查询参数认证（匿名仅支持域名搜索）"
+            >
+              <Input
+                id="maskgraph-key"
+                value={form.maskgraph_key}
+                onChange={setField("maskgraph_key")}
+                spellCheck={false}
+                placeholder="4179xxxxxxxxxxxxxxxxxxxx"
+                className="border-border-primary bg-surface-inset font-mono text-[13px] dark:bg-surface-inset"
+              />
+            </Field>
+
+            <div className="flex items-center gap-3">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => maskgraphCheck.mutate()}
+                disabled={maskgraphCheck.isPending}
+                className="border-border-primary bg-surface-overlay text-text-secondary hover:text-text-primary dark:bg-surface-overlay"
+              >
+                <PlugZap />
+                检测 key
+              </Button>
+              <span className="font-mono text-[11px] text-text-muted">
+                消耗 1 次搜索配额 · key 缺失时跳过
+              </span>
+            </div>
+
+            <MaskgraphResult
+              isPending={maskgraphCheck.isPending}
+              data={maskgraphCheck.data}
+              error={maskgraphCheck.error}
+            />
           </section>
         </div>
       </div>
